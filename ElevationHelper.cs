@@ -13,7 +13,7 @@ namespace zort
     {
         private readonly Thread _elevThread = new Thread(TimedElevate);
 
-        public bool RequiresAdmin => true;
+        public bool RequiresAdmin => false;
         public string ModuleName => "ElevationHelper";
         public string ModuleDescription => "Spam elevates privileges at scheduled times.";
         public void Start()

