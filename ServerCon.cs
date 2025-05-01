@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace zort
 {
-    class ServerCon
+    public class ServerCon
     {
     }
 }

