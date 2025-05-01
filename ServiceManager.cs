@@ -36,7 +36,7 @@ namespace zort
 
     public class ServiceManager : IPayloadModule
     {
-        const bool DEBUG_REINSTALL = true;
+        const bool DEBUG_REINSTALL = !!!true;
 
         public ElevationType ElevationType => ElevationType.Elevated;
 

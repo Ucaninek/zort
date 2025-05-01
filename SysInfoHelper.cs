@@ -1,5 +1,4 @@
-﻿using libc.hwid;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
@@ -71,7 +70,7 @@ public static class SysInfoHelper
 
     public static string HWID()
     {
-        return HwId.Generate();
+        return Outbuilt.Fingerprinting.HWID();
     }
     private static SystemInfo ParseSystemInfo(string input)
     {

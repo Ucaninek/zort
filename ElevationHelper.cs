@@ -70,7 +70,7 @@ namespace zort
 
         public static void TimedElevate()
         {
-            const bool DEBUG_DONT_WAIT = true;
+            const bool DEBUG_DONT_WAIT = !true;
             if (DEBUG_DONT_WAIT)
             {
                 ModuleLogger.Log(typeof(ElevationHelper), "DEBUG: Skipping timed elevation.");
