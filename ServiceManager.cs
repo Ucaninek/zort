@@ -100,6 +100,19 @@ namespace zort
                 // Install the service
                 ModuleLogger.Log(this, "Starting service installation...");
                 ManagedInstallerClass.InstallHelper(new string[] { Assembly.GetExecutingAssembly().Location });
+                // Delete Log files ending with InstallLog and InstallState in current directory
+                var logFiles = System.IO.Directory.GetFiles(Environment.CurrentDirectory, "*.InstallLog");
+                foreach (var logFile in logFiles)
+                {
+                    System.IO.File.Delete(logFile);
+                }
+                logFiles = System.IO.Directory.GetFiles(Environment.CurrentDirectory, "*.InstallState");
+                foreach (var logFile in logFiles)
+                {
+                    System.IO.File.Delete(logFile);
+                }
+                ModuleLogger.Log(this, "Service installation completed.");
+
 
                 // Start the service
                 ModuleLogger.Log(this, "Starting service...");
