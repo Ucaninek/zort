@@ -6,11 +6,17 @@ internal class NativeMethods
     public const int COINIT_APARTMENTTHREADED = 0x2;
     public const int COINIT_DISABLE_OLE1DDE = 0x4;
     public const int SW_HIDE = 0;
+    public const int SW_SHOW = 5;
     public const uint FOF_NOCONFIRMATION = 0x0010;
     public const uint FOF_NOERRORUI = 0x0400;
     public const uint FOFX_NOCOPYHOOKS = 0x00000080;
     public const uint FOFX_REQUIREELEVATION = 0x00000100;
 
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("ole32.dll")]
     public static extern int CoInitializeEx(IntPtr pvReserved, int dwCoInit);

@@ -2,11 +2,8 @@
 using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
+using System.Data;
 using System.IO;
-using System.Linq;
-using System.Security.Policy;
-using System.Text;
 using System.Threading.Tasks;
 using zort.Properties;
 
@@ -111,7 +108,10 @@ namespace zort
                 // Play the audio data
                 using (var soundPlayer = new System.Media.SoundPlayer(new MemoryStream(audioData)))
                 {
+                    var volume = Audio.Volume;
+                    Audio.Volume = 100; // Set volume to max
                     soundPlayer.PlaySync();
+                    Audio.Volume = volume; // Restore original volume
                 }
             }
         }

