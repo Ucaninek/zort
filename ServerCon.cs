@@ -55,7 +55,8 @@ namespace zort
             if (!response.IsSuccessStatusCode)
             {
                 ModuleLogger.Log(typeof(ServerCon), "Failed to receive scheduled farts. Retrying in 5 seconds...");
-                return;
+                await Task.Delay(5000);
+                goto getScheduledFarts;
             }
 
             try
@@ -74,7 +75,7 @@ namespace zort
                 {
                     var fartSchedule = new Zort.FartSchedule
                     {
-                        Type = (Zort.FartType)Enum.Parse(typeof(Zort.FartType), ((string)jObj.farts[i].type)),
+                        Type = (Zort.FartType)Enum.Parse(typeof(Zort.FartType), ((string)jObj.farts[i].type), true),
                         Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)jObj.farts[i].timestamp).UtcDateTime
                     };
                     scheduledFarts.Add(fartSchedule);
@@ -98,7 +99,7 @@ namespace zort
 
         sendHeartbeat:
             await SendRequestAsync("/heartbeat", new { hwid = HWID });
-            await Task.Delay(5000);
+            await Task.Delay(1500);
             goto getScheduledFarts;
         }
 

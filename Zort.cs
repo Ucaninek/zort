@@ -22,7 +22,6 @@ namespace zort
             Wet,
             WetLong,
             MiniExplosion,
-            Explosion,
             Puke
         }
 
@@ -34,6 +33,8 @@ namespace zort
             [JsonProperty("timestamp")]
             [JsonConverter(typeof(UnixDateTimeConverter))]
             public DateTime Timestamp { get; set; }
+            [JsonProperty("id")]
+            public string Id { get; set; }
         }
 
         public class FartScheduleList
@@ -94,9 +95,6 @@ namespace zort
                     break;
                 case FartType.MiniExplosion:
                     fartAudio = Resources.miniexplosion;
-                    break;
-                case FartType.Explosion:
-                    fartAudio = Resources.explosive;
                     break;
                 case FartType.Puke:
                     fartAudio = Resources.puke;
