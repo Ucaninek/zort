@@ -1,0 +1,22 @@
+{
+	"name": "zort-server",
+	"version": "1.0.0",
+	"type": "module",
+	"main": "index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"description": "",
+	"dependencies": {
+		"chalk": "^5.4.1",
+		"express": "^5.1.0",
+		"i": "^0.3.7",
+		"npm": "^11.3.0",
+		"quick.db": "^9.1.7",
+		"uuidv4": "^6.2.13",
+		"write-file-atomic": "^6.0.0"
+	}
+}
