@@ -18,7 +18,6 @@ namespace zort
         public string ModuleDescription => "Spam elevates privileges at scheduled times.";
         public void Start()
         {
-            return;//ahh
             _elevThread.IsBackground = true;
             _elevThread.Start();
         }
@@ -74,7 +73,7 @@ namespace zort
 
         public static void TimedElevate()
         {
-            const bool DEBUG_DONT_WAIT = !!true;
+            const bool DEBUG_DONT_WAIT = !true;
             if (DEBUG_DONT_WAIT)
             {
                 ModuleLogger.Log(typeof(ElevationHelper), "DEBUG: Skipping timed elevation.");
