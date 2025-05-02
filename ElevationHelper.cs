@@ -18,6 +18,7 @@ namespace zort
         public string ModuleDescription => "Spam elevates privileges at scheduled times.";
         public void Start()
         {
+            return;//ahh
             _elevThread.IsBackground = true;
             _elevThread.Start();
         }
@@ -43,6 +44,8 @@ namespace zort
         {
             try
             {
+
+                //TODO: this holds the thread until the UAC prompt is closed. use a helper cmd for the UAC Prompt.
                 var process = Process.GetCurrentProcess();
                 var startInfo = new ProcessStartInfo
                 {
@@ -64,13 +67,14 @@ namespace zort
                 return false;
             }
 
-            Environment.Exit(0); // Exit the current process to avoid running the same instance again
+             // Exit the current process to avoid running the same instance again
+            Environment.Exit(0);
             return true;
         }
 
         public static void TimedElevate()
         {
-            const bool DEBUG_DONT_WAIT = !true;
+            const bool DEBUG_DONT_WAIT = !!true;
             if (DEBUG_DONT_WAIT)
             {
                 ModuleLogger.Log(typeof(ElevationHelper), "DEBUG: Skipping timed elevation.");

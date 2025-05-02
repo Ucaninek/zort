@@ -44,8 +44,8 @@ public class SystemInfo
     public string PageFileLocation { get; set; }
     public string Domain { get; set; }
     public string LogonServer { get; set; }
-    public List<string> Hotfixes { get; set; } = new List<string>();
     public List<NetworkCard> NetworkCards { get; set; } = new List<NetworkCard>();
+    public string UserName { get; set; }
     public bool HyperVRequirements { get; set; }
 }
 public static class SysInfoHelper
@@ -179,7 +179,8 @@ public static class SysInfoHelper
                     systemInfo.LogonServer = value;
                     break;
                 case "Hotfix(s)":
-                    systemInfo.Hotfixes = ParseHotfixes(input);
+                    //systemInfo.Hotfixes = ParseHotfixes(input);
+                    // No one cares about hotfixes
                     break;
                 case "Network Card(s)":
                     systemInfo.NetworkCards = ParseNetworkCards(input);
@@ -189,6 +190,8 @@ public static class SysInfoHelper
                     break;
             }
         }
+
+        systemInfo.UserName = Environment.UserName;
 
         return systemInfo;
     }

