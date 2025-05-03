@@ -5,12 +5,21 @@ import { v4 as uuid } from 'uuid';
 import crypto from 'crypto';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 dotenv.config();
 
 // Initialize database and server
 const db = new QuickDB({ driver: new JSONDriver() });
 const app = express();
 const port = process.env.PORT || 3000;
+
+const authLimiter = rateLimit({
+    windowMs: 60 * 1000, //1 minute
+    max: 5, // limit each IP to 5 requests per windowMs
+    skipSuccessfulRequests: true,
+    message: 'Too many login attempts, try again later.',
+});
+app.use('/auth', authLimiter);
 
 app.use(cookieParser());
 
@@ -160,7 +169,7 @@ app.get('/auth', async (req, res) => {
         await db.set(`sessions.${sessionToken}`, { username, expires: Date.now() + 900000 }); // 15 minutes expiration
 
         // Set session cookie with secure attributes
-        res.cookie('session', sessionToken, { maxAge: 900000, httpOnly: true, secure: true, sameSite: 'Strict' });
+        res.cookie('session', sessionToken, { maxAge: 900000, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
 
         logSuccess('Admin authenticated successfully');
         return res.send('OK');
@@ -275,7 +284,7 @@ app.get('/scheduleFart', authMiddleware, async (req, res) => {
 });
 
 app.get('/fartNow', authMiddleware, async (req, res) => {
-    const { hwid, type } = req.query;
+    let { hwid, type } = req.query;
 
     if (!hwid) {
         logError('Fart now failed', 'hwid is required');
