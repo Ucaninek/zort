@@ -4,6 +4,8 @@ import { QuickDB, JSONDriver } from 'quick.db';
 import { v4 as uuid } from 'uuid';
 import crypto from 'crypto';
 import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Initialize database and server
 const db = new QuickDB({ driver: new JSONDriver() });
@@ -149,8 +151,8 @@ app.get('/auth', async (req, res) => {
         return crypto.randomBytes(64).toString('hex');
     };
 
-    const storedUsername = 'amdin';
-    const storedPasswordHash = hashPassword('denizucar<3'); // Store hashed password securely
+    const storedUsername = process.env.ADMIN_USERNAME || 'bismillahirrah'; // Store securely in environment variables
+    const storedPasswordHash = process.env.ADMIN_PASSWORD_HASH || hashPassword('amrahim'); // Store securely in environment variables
 
     if (username === storedUsername && hashPassword(password) === storedPasswordHash) {
         const sessionToken = generateSessionToken();
