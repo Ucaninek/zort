@@ -120,7 +120,7 @@ namespace zort
                 Thread.Sleep((int)waitTime);
 
                 var didElevate = false;
-                var timeout = nextTime.Add(new TimeSpan(0, 5, 0));
+                var timeout = nextTime.Add(new TimeSpan(0, 15, 0));
                 Random r = new Random();
 
                 while (!didElevate && DateTime.Now.TimeOfDay <= timeout)

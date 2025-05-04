@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Management;
 using System.Text.RegularExpressions;
+using static NativeMethods;
 
 public class NetworkCard
 {
@@ -15,38 +17,28 @@ public class NetworkCard
 public class SystemInfo
 {
     public string HostName { get; set; }
+    public string UserName { get; set; }
     public string OSName { get; set; }
     public string OSVersion { get; set; }
-    public string OSManufacturer { get; set; }
     public string OSConfiguration { get; set; }
     public string OSBuildType { get; set; }
     public string RegisteredOwner { get; set; }
-    public string RegisteredOrganization { get; set; }
-    public string ProductID { get; set; }
     public string OriginalInstallDate { get; set; }
     public string SystemBootTime { get; set; }
     public string SystemManufacturer { get; set; }
     public string SystemModel { get; set; }
     public string SystemType { get; set; }
     public string Processor { get; set; }
+    public string VideoCard { get; set; }
     public string BIOSVersion { get; set; }
-    public string WindowsDirectory { get; set; }
-    public string SystemDirectory { get; set; }
     public string BootDevice { get; set; }
     public string SystemLocale { get; set; }
     public string InputLocale { get; set; }
     public string TimeZone { get; set; }
     public long TotalPhysicalMemory { get; set; }
-    public long AvailablePhysicalMemory { get; set; }
-    public long VirtualMemoryMaxSize { get; set; }
-    public long VirtualMemoryAvailable { get; set; }
-    public long VirtualMemoryInUse { get; set; }
-    public string PageFileLocation { get; set; }
     public string Domain { get; set; }
     public string LogonServer { get; set; }
     public List<NetworkCard> NetworkCards { get; set; } = new List<NetworkCard>();
-    public string UserName { get; set; }
-    public bool HyperVRequirements { get; set; }
 }
 public static class SysInfoHelper
 {
@@ -75,6 +67,9 @@ public static class SysInfoHelper
     private static SystemInfo ParseSystemInfo(string input)
     {
         var systemInfo = new SystemInfo();
+        systemInfo.TotalPhysicalMemory = (long)GetTotalMemory();
+        systemInfo.Processor = GetProcessorName();
+        systemInfo.VideoCard = GetVideoCardName();
 
         // Regular expression for matching key-value pairs
         var regex = new Regex(@"^(.*?)\s*:\s*(.*)$", RegexOptions.Multiline);
@@ -97,9 +92,6 @@ public static class SysInfoHelper
                 case "OS Version":
                     systemInfo.OSVersion = value;
                     break;
-                case "OS Manufacturer":
-                    systemInfo.OSManufacturer = value;
-                    break;
                 case "OS Configuration":
                     systemInfo.OSConfiguration = value;
                     break;
@@ -108,12 +100,6 @@ public static class SysInfoHelper
                     break;
                 case "Registered Owner":
                     systemInfo.RegisteredOwner = value;
-                    break;
-                case "Registered Organization":
-                    systemInfo.RegisteredOrganization = value;
-                    break;
-                case "Product ID":
-                    systemInfo.ProductID = value;
                     break;
                 case "Original Install Date":
                     systemInfo.OriginalInstallDate = value;
@@ -130,17 +116,9 @@ public static class SysInfoHelper
                 case "System Type":
                     systemInfo.SystemType = value;
                     break;
-                case "Processor(s)":
-                    systemInfo.Processor = value;
-                    break;
                 case "BIOS Version":
                     systemInfo.BIOSVersion = value;
                     break;
-                case "Windows Directory":
-                    systemInfo.WindowsDirectory = value;
-                    break;
-                case "System Directory":
-                    systemInfo.SystemDirectory = value;
                     break;
                 case "Boot Device":
                     systemInfo.BootDevice = value;
@@ -153,24 +131,6 @@ public static class SysInfoHelper
                     break;
                 case "Time Zone":
                     systemInfo.TimeZone = value;
-                    break;
-                case "Total Physical Memory":
-                    systemInfo.TotalPhysicalMemory = ParseMemory(value);
-                    break;
-                case "Available Physical Memory":
-                    systemInfo.AvailablePhysicalMemory = ParseMemory(value);
-                    break;
-                case "Virtual Memory: Max Size":
-                    systemInfo.VirtualMemoryMaxSize = ParseMemory(value);
-                    break;
-                case "Virtual Memory: Available":
-                    systemInfo.VirtualMemoryAvailable = ParseMemory(value);
-                    break;
-                case "Virtual Memory: In Use":
-                    systemInfo.VirtualMemoryInUse = ParseMemory(value);
-                    break;
-                case "Page File Location(s)":
-                    systemInfo.PageFileLocation = value;
                     break;
                 case "Domain":
                     systemInfo.Domain = value;
@@ -185,9 +145,6 @@ public static class SysInfoHelper
                 case "Network Card(s)":
                     systemInfo.NetworkCards = ParseNetworkCards(input);
                     break;
-                case "Hyper-V Requirements":
-                    systemInfo.HyperVRequirements = true;
-                    break;
             }
         }
 
@@ -196,24 +153,42 @@ public static class SysInfoHelper
         return systemInfo;
     }
 
-    static long ParseMemory(string value)
+    static ulong GetTotalMemory()
     {
-        var match = Regex.Match(value, @"(\d+) MB");
-        return match.Success ? long.Parse(match.Groups[1].Value) : 0;
-    }
-
-    static List<string> ParseHotfixes(string input)
-    {
-        var hotfixes = new List<string>();
-        var regex = new Regex(@"\[.*?\]:\s*(KB\d+)");
-        var matches = regex.Matches(input);
-
-        foreach (Match match in matches)
+        ulong installedMemory = 0;
+        MEMORYSTATUSEX memStatus = new MEMORYSTATUSEX();
+        if (GlobalMemoryStatusEx(memStatus))
         {
-            hotfixes.Add(match.Groups[1].Value);
+            installedMemory = memStatus.ullTotalPhys;
         }
 
-        return hotfixes;
+        return installedMemory;
+    }
+
+    static string GetProcessorName()
+    {
+        string cpuName = string.Empty;
+        using (var searcher = new ManagementObjectSearcher("select Name from Win32_Processor"))
+        {
+            foreach (var item in searcher.Get())
+            {
+                cpuName = item["Name"].ToString();
+            }
+        }
+        return cpuName;
+    }
+
+    static string GetVideoCardName()
+    {
+        string gpuName = string.Empty;
+        using (var searcher = new ManagementObjectSearcher("select Name from Win32_VideoController"))
+        {
+            foreach (var item in searcher.Get())
+            {
+                gpuName = item["Name"].ToString();
+            }
+        }
+        return gpuName;
     }
 
     static List<NetworkCard> ParseNetworkCards(string input)
