@@ -6,12 +6,22 @@ import crypto from 'crypto';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
+import fs from 'fs';
+import https from 'https';
+import { time } from 'console';
 dotenv.config();
 
 // Initialize database and server
 const db = new QuickDB({ driver: new JSONDriver() });
 const app = express();
 const port = process.env.PORT || 3000;
+
+app.use(express.static('public'));
+
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/index.html'));
+});
 
 const authLimiter = rateLimit({
     windowMs: 60 * 1000, //1 minute
@@ -35,7 +45,7 @@ const fartTypes = {
 
 const isOnline = (heartbeat) => {
     const lastHeartbeat = heartbeat || 0;
-    const currentTime = Math.round(Date.now() / 1000);
+    const currentTime = Math.round(Date.now());
     const timeDiff = currentTime - lastHeartbeat;
     const threshold = 60 * 1000; // 1 minute
     return timeDiff < threshold;
@@ -80,7 +90,7 @@ const authMiddleware = async (req, res, next) => {
 };
 
 // Routes
-app.get('/', (req, res) => {
+app.post('/', (req, res) => {
     res.send('Hey boyz!!');
 });
 
@@ -166,10 +176,10 @@ app.get('/auth', async (req, res) => {
     if (username === storedUsername && hashPassword(password) === storedPasswordHash) {
         const sessionToken = generateSessionToken();
         // Store session token in the database (or any other secure storage)
-        await db.set(`sessions.${sessionToken}`, { username, expires: Date.now() + 900000 }); // 15 minutes expiration
+        await db.set(`sessions.${sessionToken}`, { username, expires: Date.now() + 24 * 60 * 60 * 1000 }); // 24 hours expiration
 
         // Set session cookie with secure attributes
-        res.cookie('session', sessionToken, { maxAge: 900000, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
+        res.cookie('session', sessionToken, { maxAge: 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'Strict' });
 
         logSuccess('Admin authenticated successfully');
         return res.send('OK');
@@ -183,7 +193,9 @@ app.get('/getClients', authMiddleware, async (req, res) => {
     try {
         var clients = await db.get('clients');
         if (clients) {
-            logInfo('Client data sent to admin');
+            // get request ip
+            const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+            logInfo('Client data sent to admin from ' + ip);
             //add online status to each client
             for (const hwid in clients) {
                 clients[hwid].isOnline = isOnline(clients[hwid].heartbeat);
@@ -254,11 +266,11 @@ app.get('/logout', authMiddleware, async (req, res) => {
 });
 
 app.get('/scheduleFart', authMiddleware, async (req, res) => {
-    const { hwid, fartType, timestamp } = req.query;
+    const { hwid, type, timestamp } = req.query;
 
-    if (!hwid || !fartType) {
-        logError('Schedule fart failed', 'hwid and fartType are required');
-        return res.status(400).send('hwid and fartType are required');
+    if (!hwid || !type) {
+        logError('Schedule fart failed', 'hwid and type are required');
+        return res.status(400).send('hwid and type are required');
     }
 
     // Check if the hwid is valid
@@ -271,12 +283,13 @@ app.get('/scheduleFart', authMiddleware, async (req, res) => {
     try {
         const fartData = {
             id: uuid(),
-            type: fartTypes[fartType] || fartTypes.classic,
-            timestamp: Math.round(new Date(timestamp) / 1000),
+            type: fartTypes[type] || fartTypes.classic,
+            timestamp: Math.round(timestamp / 1000),
         };
         await db.push(`clients.${hwid}.farts`, fartData);
+        logError(`Fart scheduled for ${hwid}`, `Type: ${fartData.type}, Timestamp: ${new Date(Math.round(timestamp)).toLocaleString()}, raw: ${timestamp}`);
         logSuccess(`Fart scheduled for ${hwid}`);
-        res.send(`Fart scheduled for ${hwid} at ${new Date(timestamp).toLocaleString()}`);
+        res.send(`Fart scheduled for ${hwid} at ${new Date(Math.round(timestamp)).toLocaleString()}`);
     } catch (err) {
         logError(`Error scheduling fart for ${hwid}`, err.message);
         res.status(500).send('Internal server error');
@@ -322,6 +335,13 @@ app.get('/fartNow', authMiddleware, async (req, res) => {
 });
 
 // Start the server
-app.listen(port, () => {
+//app.listen(3000, () => {
+//    logSuccess(`Server is running at ${chalk.underline(`http://localhost:${port}`)}`);
+//});
+
+https.createServer({
+    key: fs.readFileSync("cert/key.pem"),
+    cert: fs.readFileSync("cert/cert.pem")
+}, app).listen(port, () => {
     logSuccess(`Server is running at ${chalk.underline(`http://localhost:${port}`)}`);
 });
