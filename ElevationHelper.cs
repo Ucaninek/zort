@@ -47,20 +47,34 @@ namespace zort
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), ELEVATION_FILE_NAME);
         }
 
-        public static bool TryElevate()
+        public static void ForceElevate(string path = null)
+        {
+            bool didElevate = false;
+            while (!didElevate)
+            {
+                didElevate = TryElevate(path);
+                Thread.Sleep(1000);
+            }
+        }
+
+        public static bool TryElevate(string path = null)
         {
             try
             {
-
-                //TODO: this holds the thread until the UAC prompt is closed. use a helper cmd for the UAC Prompt.
+                if (path == null) path = Assembly.GetExecutingAssembly().Location;
                 var startInfo = new ProcessStartInfo
                 {
                     UseShellExecute = true,
                     Verb = "runas",
                     FileName = "cmd.exe",
-                    Arguments = $"/c start \"\" \"{Assembly.GetExecutingAssembly().Location}\""
+                    Arguments = $"/c start \"\" \"{Path.GetFullPath(path)}\""
                 };
-                Process.Start(startInfo);
+                var process = Process.Start(startInfo);
+                if(!process.WaitForExit(5000))
+                {
+                    process.Kill();
+                    return false;
+                }
             }
             catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
             {

