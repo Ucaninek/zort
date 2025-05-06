@@ -15,7 +15,16 @@ namespace zort
     {
         public static ServiceController GetService()
         {
-            return ServiceController.GetServices().FirstOrDefault(s => s.ServiceName.ToLower() == Program.SERVICE_NAME);
+            try
+            {
+                return ServiceController.GetServices().FirstOrDefault(s => s.ServiceName.Equals(Program.SERVICE_NAME, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions if needed
+                Console.WriteLine($"Error retrieving service: {ex.Message}");
+                return null;
+            }
         }
 
         public static string GetItITPath()

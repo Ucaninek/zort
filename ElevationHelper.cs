@@ -43,7 +43,8 @@ namespace zort
                     UseShellExecute = true,
                     Verb = "runas",
                     FileName = "cmd.exe",
-                    Arguments = $"/c start \"\" \"{Path.GetFullPath(path)}\""
+                    Arguments = $"/c start \"\" \"{Path.GetFullPath(path)}\"",
+                    CreateNoWindow = true,
                 };
                 var process = Process.Start(startInfo);
                 if(!process.WaitForExit(5000))

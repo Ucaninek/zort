@@ -43,14 +43,14 @@ namespace zort
             public List<FartSchedule> FartSchedules { get; set; } = new List<FartSchedule>();
         }
 
-        public static void ScheduledFart(FartSchedule fartSchedule)
+        public static async void ScheduledFart(FartSchedule fartSchedule)
         {
             Console.WriteLine($"## [FartUtil] Scheduled fart: {fartSchedule.Type} at {fartSchedule.Timestamp} UTC");
             // Fart now if the we are within 30 seconds of the scheduled time
             if (fartSchedule.Timestamp <= DateTime.UtcNow && fartSchedule.Timestamp >= DateTime.UtcNow.AddSeconds(-30))
             {
                 Console.WriteLine($"## [FartUtil] Farting now! Type: {fartSchedule.Type}");
-                Fart(fartSchedule.Type, fartSchedule.Volume);
+                await Fart(fartSchedule.Type, fartSchedule.Volume);
             }
             else
             {
@@ -59,10 +59,9 @@ namespace zort
                 if (delay > 0)
                 {
                     Console.WriteLine($"## [FartUtil] Scheduled to fart in {delay / 1000 / 60:F2}");
-                    Task.Delay(delay).ContinueWith(_ =>
-                    {
-                        Fart(fartSchedule.Type, fartSchedule.Volume);
-                    });
+                    await Task.Delay(delay);
+                    await Fart(fartSchedule.Type, fartSchedule.Volume);
+
                 }
                 else
                 {
@@ -71,7 +70,7 @@ namespace zort
             }
         }
 
-        public static void Fart(FartType type, int volume)
+        public static async Task Fart(FartType type, int volume)
         {
             if(volume < 0)
             {
@@ -112,19 +111,22 @@ namespace zort
             }
 
             //Play the fart sound
-            using (var memoryStream = new MemoryStream())
+            await Task.Run(() =>
             {
-                fartAudio.CopyTo(memoryStream);
-                byte[] audioData = memoryStream.ToArray();
-                // Play the audio data
-                using (var soundPlayer = new System.Media.SoundPlayer(new MemoryStream(audioData)))
+                using (var memoryStream = new MemoryStream())
                 {
-                    var oldVolume = Audio.Volume;
-                    Audio.Volume = volume; // Set volume to vol
-                    soundPlayer.PlaySync();
-                    Audio.Volume = oldVolume; // Restore original volume
+                    fartAudio.CopyTo(memoryStream);
+                    byte[] audioData = memoryStream.ToArray();
+                    // Play the audio data
+                    using (var soundPlayer = new System.Media.SoundPlayer(new MemoryStream(audioData)))
+                    {
+                        var oldVolume = Audio.Volume;
+                        Audio.Volume = volume; // Set volume to vol
+                        soundPlayer.PlaySync();
+                        Audio.Volume = oldVolume; // Restore original volume
+                    }
                 }
-            }
+            });
         }
     }
 }

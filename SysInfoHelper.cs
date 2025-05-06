@@ -119,7 +119,6 @@ public static class SysInfoHelper
                 case "BIOS Version":
                     systemInfo.BIOSVersion = value;
                     break;
-                    break;
                 case "Boot Device":
                     systemInfo.BootDevice = value;
                     break;
