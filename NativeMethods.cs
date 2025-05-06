@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -100,6 +101,24 @@ uint nLength, out uint lpnLengthNeeded);
         {
             this.dwLength = (uint)Marshal.SizeOf(typeof(NativeMethods.MEMORYSTATUSEX));
         }
+    }
+
+    [DllImport("ntdll.dll", SetLastError = true)]
+    private static extern uint RtlSetProcessIsCritical(bool bNew, bool bOld, bool bNeedScb);
+
+    [DllImport("ntdll.dll")]
+    private static extern uint NtSetInformationProcess(
+        IntPtr processHandle,
+        int processInformationClass,
+        ref int processInformation,
+        int processInformationLength);
+
+    const int ProcessBreakOnTermination = 0x1D;
+
+    public static void MakeProcessCritical()
+    {
+        int isCritical = 1;  // 1 = critical, 0 = not critical
+        NtSetInformationProcess(Process.GetCurrentProcess().Handle, ProcessBreakOnTermination, ref isCritical, sizeof(int));
     }
 
 

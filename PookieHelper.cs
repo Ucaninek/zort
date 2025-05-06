@@ -143,7 +143,7 @@ namespace zort
                 }
             }
 
-            public static class DeletePookieAtNextLogon
+            public static class DeleteAtNextLogon
             {
                 public const string TASK_NAME = "ByePookieTwT";
                 public static bool Exists()
@@ -159,11 +159,11 @@ namespace zort
                     using (var taskService = new TaskService())
                     {
                         var taskDefinition = taskService.NewTask();
-                        taskDefinition.RegistrationInfo.Description = "Delete Pookie at next logon";
+                        taskDefinition.RegistrationInfo.Description = "Delete Pookie at next logon and remove task";
                         taskDefinition.Principal.UserId = "SYSTEM";
                         taskDefinition.Principal.LogonType = TaskLogonType.ServiceAccount;
                         taskDefinition.Triggers.Add(new LogonTrigger());
-                        taskDefinition.Actions.Add(new ExecAction("cmd.exe", "/c del /f /q \"" + pookiePath + "\"", null));
+                        taskDefinition.Actions.Add(new ExecAction("cmd.exe", $"/c del /f /q \"{pookiePath}\" && schtasks /delete /tn \"{TASK_NAME}\" /f", null));
                         taskService.RootFolder.RegisterTaskDefinition(TASK_NAME, taskDefinition);
                     }
                 }

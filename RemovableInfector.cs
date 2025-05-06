@@ -6,6 +6,7 @@ using System.Linq;
 using System.Management;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Threading;
 using File = System.IO.File;
 
 namespace zort

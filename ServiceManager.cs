@@ -36,7 +36,7 @@ namespace zort
                 using (var process = new Process())
                 {
                     process.StartInfo.FileName = "sc";
-                    process.StartInfo.Arguments = $"failure \"{serviceInstaller.ServiceName}\" reset=0 actions=restart/5000";
+                    process.StartInfo.Arguments = $"failure \"{serviceInstaller.ServiceName}\" reset= 0 actions= restart/5000";
                     process.StartInfo.CreateNoWindow = true;
                     process.StartInfo.UseShellExecute = false;
                     process.Start();
@@ -144,7 +144,7 @@ namespace zort
                             using (var process = new Process())
                             {
                                 process.StartInfo.FileName = "sc";
-                                process.StartInfo.Arguments = $"config \"{serviceName}\" start=auto";
+                                process.StartInfo.Arguments = $"config \"{serviceName}\" start= auto";
                                 process.StartInfo.CreateNoWindow = true;
                                 process.StartInfo.UseShellExecute = false;
                                 process.Start();
