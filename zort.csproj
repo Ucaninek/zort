@@ -116,7 +116,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ServerCon.cs" />
     <Compile Include="ServiceHelper.cs" />
-    <Compile Include="ServiceManager.cs">
+    <Compile Include="ServiceInstaller.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="SysInfoHelper.cs" />

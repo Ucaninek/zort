@@ -60,7 +60,6 @@ namespace zort
             catch (Exception ex)
             {
                 ModuleLogger.Log(typeof(ServerCon), $"Error in server routine: {ex.Message}");
-                throw;
                 Thread.Sleep(5000);
                 goto uwu;
             }
@@ -99,7 +98,6 @@ namespace zort
         {
             const string githubUrl = "https://raw.githubusercontent.com/ZKitap/zortie/refs/heads/main/server.dat";
             const string defaultServerUrl = "https://localhost:2256";
-            return defaultServerUrl; //REMOVE THIS FUCKER
 
             using (var client = new HttpClient())
             {
